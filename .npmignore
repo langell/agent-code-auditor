@@ -1,0 +1,13 @@
+# Ignore development files
+src/
+test-project/
+tsconfig.json
+.eslintrc.json
+eslint.config.js
+# Exclude tests if there were any
+*.test.ts
+*.spec.ts
+
+# Ignore reports and tarballs
+report.csv
+*.tgz

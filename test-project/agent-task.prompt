@@ -1,0 +1,17 @@
+# Agent Task: Write a script to calculate Fibonacci
+
+This is a task for an AI agent. It needs to calculate the fibonacci sequence.
+
+## Constraints
+- Use typescript
+- O(N) time complexity
+
+// Missing required section headers!
+
+
+## Acceptance Criteria
+- [ ] TODO: Define acceptance criteria.
+
+
+## Rollback / Abort Conditions
+- [ ] TODO: Define conditions under which the agent should abort.

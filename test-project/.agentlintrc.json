@@ -1,0 +1,7 @@
+{
+  "rules": {
+    "no-placeholder-comments": "warn",
+    "no-insecure-renders": "error",
+    "no-hallucinated-imports": "error"
+  }
+}
