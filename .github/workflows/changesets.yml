@@ -36,6 +36,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Verify npm publish auth
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          test -n "$NODE_AUTH_TOKEN" || (echo "NPM_TOKEN is missing" && exit 1)
+          npm config get registry
+          npm whoami
+          npm view "$(node -p "require('./package.json').name")" name version --json
+
       - name: Version or Publish
         id: changesets
         uses: changesets/action@v1
