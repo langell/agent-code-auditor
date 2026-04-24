@@ -1,6 +1,6 @@
 {
   "name": "agent-code-auditor",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Configurable audit tool and linter for AI-generated code",
   "main": "dist/index.js",
   "type": "module",
