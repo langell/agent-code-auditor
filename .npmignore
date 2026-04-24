@@ -1,4 +1,5 @@
 # Ignore development files
+.github/
 src/
 test-project/
 tsconfig.json
