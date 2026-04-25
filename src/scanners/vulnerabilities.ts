@@ -17,6 +17,17 @@ export interface VulnerabilityReport {
   vulnerabilities: VulnerabilityIssue[];
 }
 
+type VulnerabilitySeverity = {
+  severity?: string;
+};
+
+type AuditJson = {
+  metadata?: {
+    vulnerabilities?: Record<string, number>;
+  };
+  vulnerabilities?: Record<string, VulnerabilitySeverity | number>;
+};
+
 export async function runVulnerabilityScanner(
   dir: string,
 ): Promise<VulnerabilityReport> {
@@ -24,7 +35,7 @@ export async function runVulnerabilityScanner(
   const yarnLockPath = path.join(dir, "yarn.lock");
   const packageLockPath = path.join(dir, "package-lock.json");
 
-  let resultStdout = "";
+  let resultStdout: string | undefined;
   try {
     if (fs.existsSync(pnpmLockPath)) {
       resultStdout = (await execAsync("pnpm audit --json", { cwd: dir }))
@@ -42,20 +53,21 @@ export async function runVulnerabilityScanner(
         vulnerabilities: [],
       };
     }
-  } catch (err: any) {
-    resultStdout = err.stdout || "{}";
+  } catch (err: unknown) {
+    const errWithStdout = err as { stdout?: string };
+    resultStdout = errWithStdout.stdout || "{}";
   }
 
   if (resultStdout) {
     try {
-      const result = JSON.parse(resultStdout);
+      const result = JSON.parse(resultStdout) as AuditJson;
       // Different package managers might have different JSON output structures
       const vulnerabilitiesObj =
         result.metadata?.vulnerabilities || result.vulnerabilities || {};
       const totalIssues = Object.values(vulnerabilitiesObj).reduce(
-        (a: any, b: any) => a + (typeof b === "number" ? b : 0),
+        (acc, value) => acc + (typeof value === "number" ? value : 0),
         0,
-      ) as number;
+      );
 
       const vulnerabilitiesList: VulnerabilityIssue[] = [];
       if (
@@ -66,9 +78,10 @@ export async function runVulnerabilityScanner(
           result.vulnerabilities,
         )) {
           if (typeof vulnData === "object" && vulnData !== null) {
+            const vulnSeverity = (vulnData as VulnerabilitySeverity).severity;
             vulnerabilitiesList.push({
               package: pkgName,
-              severity: (vulnData as any).severity || "unknown",
+              severity: vulnSeverity || "unknown",
               suggestion: `Update '${pkgName}' to a secure version. Run 'npm audit fix' or update manually.`,
             });
           }
@@ -83,7 +96,7 @@ export async function runVulnerabilityScanner(
             : "No known vulnerabilities found.",
         vulnerabilities: vulnerabilitiesList,
       };
-    } catch (e) {
+    } catch {
       // ignore parsing error
     }
   }

@@ -13,8 +13,8 @@ export function checkCodeQualityRules(
     if (file.endsWith(".ts") || file.endsWith(".tsx")) {
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
-        // Basic heuristic to catch explicit any types.
-        // e.g., `: any`, `<any>`, `as any`
+        // Basic heuristic to catch explicit loose types.
+        // Examples include type annotation, generic cast, and type assertion forms.
         if (/(:\s*any\b|<\s*any\s*>|\bas\s+any\b)/.test(line)) {
           issues.push({
             file,

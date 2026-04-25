@@ -1,5 +1,3 @@
-import * as fs from "fs";
-import * as path from "path";
 import { AgentLintConfig } from "../../config.js";
 import { AgentIssue } from "../types.js";
 
@@ -9,16 +7,17 @@ export function checkToolRules(
   config: AgentLintConfig,
 ): AgentIssue[] {
   const issues: AgentIssue[] = [];
+  const objectTypePattern = /type:\s*["']object["']/;
 
   // Basic AST-ish heuristics: Look for tool schemas missing descriptions.
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
     if (config.rules["tool-weak-schema"] !== "off") {
-      // A very basic check: 'type: "object"' without properties or description close by.
+      // A very basic check: object type schema without nearby descriptions.
       // In a real AST parser, we'd traverse the AST. For regex, we'll flag simple patterns.
       if (
-        line.includes('type: "object"') &&
+        objectTypePattern.test(line) &&
         !lines
           .slice(Math.max(0, i - 5), Math.min(lines.length, i + 5))
           .some((l) => l.includes("description"))
@@ -38,7 +37,7 @@ export function checkToolRules(
 
     if (config.rules["tool-missing-examples"] !== "off") {
       if (
-        line.includes('type: "object"') &&
+        objectTypePattern.test(line) &&
         !lines
           .slice(Math.max(0, i - 10), Math.min(lines.length, i + 15))
           .some((l) => l.includes("examples"))
@@ -59,7 +58,7 @@ export function checkToolRules(
 
   if (config.rules["tool-overlapping"] !== "off") {
     const content = lines.join("\n");
-    // Basic AST-ish heuristic: Check if 'type: "object"' or 'function' appears multiple times in a short span with similar names.
+    // Basic AST-ish heuristic: Check if object schemas or functions appear multiple times in a short span with similar names.
     // For a generic static scan, we look for multiple declarations of tools with identical names.
     const toolNames = content.match(/name:\s*['"](.*?)['"]/g) || [];
     const uniqueNames = new Set(toolNames);

@@ -66,7 +66,7 @@ export function loadConfig(targetDir: string): AgentLintConfig {
         ...defaultConfig,
         rules: { ...defaultConfig.rules, ...(userConfig.rules || {}) },
       };
-    } catch (e) {
+    } catch {
       console.warn("Failed to parse .agentlintrc.json. Using default config.");
     }
   }
