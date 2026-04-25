@@ -108,6 +108,23 @@ program
         });
       });
 
+      if (!lint.available) {
+        console.log(
+          [
+            "Linter",
+            "-",
+            "-",
+            "warning",
+            "eslint-unavailable",
+            lint.failureMessage ||
+              "The target project's ESLint setup could not be executed.",
+            "Run ESLint directly in the target project to fix its local configuration or dependency graph.",
+          ]
+            .map(escapeCSV)
+            .join(","),
+        );
+      }
+
       ast.forEach((issue) => {
         console.log(
           [
@@ -158,7 +175,29 @@ function printReport(
   // --- Linter ---
   console.log(chalk.cyan.bold("🎨 Linter Engine"));
   console.log(subDivider);
-  if (lint.errorCount > 0 || lint.warningCount > 0) {
+  if (!lint.available) {
+    console.log(
+      chalk.red(
+        `  ❌ Linter could not run: ${lint.failureMessage || "The target project's ESLint setup is incompatible or missing."}`,
+      ),
+    );
+    console.log(chalk.gray("  Fix the target repo, then rerun agentlint:"));
+    console.log(
+      chalk.gray(
+        "    1. Run 'pnpm exec eslint .' in the target repo to reproduce the local ESLint failure.",
+      ),
+    );
+    console.log(
+      chalk.gray(
+        "    2. Reinstall that repo's dependencies with 'pnpm install' after clearing stale node_modules if needed.",
+      ),
+    );
+    console.log(
+      chalk.gray(
+        "    3. Align incompatible ESLint, parser, and plugin versions in that repo before rerunning the scan.\n",
+      ),
+    );
+  } else if (lint.errorCount > 0 || lint.warningCount > 0) {
     const errorStr =
       lint.errorCount > 0 ? chalk.red(`${lint.errorCount} Errors`) : `0 Errors`;
     const warnStr =
@@ -258,10 +297,16 @@ function printReport(
     lint.errorCount > 0 ||
     ast.some((i) => i.severity === "error")
       ? chalk.red
-      : chalk.green;
+      : !lint.available
+        ? chalk.yellow
+        : chalk.green;
+  const summaryPrefix = lint.available ? "✅" : "⚠️";
+  const linterSummary = lint.available
+    ? `${lint.errorCount} lint errors, ${lint.warningCount} lint warnings`
+    : "linter unavailable";
   console.log(
     summaryColor(
-      `✅ Scan complete. Found ${vuln.issues} vulnerabilities, ${lint.errorCount} lint errors, ${lint.warningCount} lint warnings, and ${ast.length} agentic smells.\n`,
+      `${summaryPrefix} Scan complete. Found ${vuln.issues} vulnerabilities, ${linterSummary}, and ${ast.length} agentic smells.\n`,
     ),
   );
 }

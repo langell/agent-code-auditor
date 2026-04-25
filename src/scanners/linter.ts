@@ -28,6 +28,14 @@ type ESLintConstructor = {
 
 const lintPatterns = ["**/*.js", "**/*.ts", "**/*.jsx", "**/*.tsx"];
 
+function formatLinterError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
+}
+
 function resolveESLint(dir: string): ESLintConstructor {
   try {
     const projectRequire = createRequire(path.join(dir, "__agentlint__.cjs"));
@@ -51,6 +59,8 @@ export interface LinterReport {
   errorCount: number;
   warningCount: number;
   messages: LintResultLike[];
+  available: boolean;
+  failureMessage?: string;
 }
 
 export async function runLinter(
@@ -83,12 +93,15 @@ export async function runLinter(
       errorCount,
       warningCount,
       messages: results.filter((r) => r.errorCount > 0 || r.warningCount > 0),
+      available: true,
     };
   } catch (error) {
-    console.error(
-      "ESLint scanning failed. The target project may have a missing or incompatible ESLint setup.",
-      error,
-    );
-    return { errorCount: 0, warningCount: 0, messages: [] };
+    return {
+      errorCount: 0,
+      warningCount: 0,
+      messages: [],
+      available: false,
+      failureMessage: formatLinterError(error),
+    };
   }
 }

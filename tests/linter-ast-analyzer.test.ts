@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -20,6 +21,8 @@ test("runLinter handles project without eslint config gracefully", async () => {
   assert.ok(typeof result.errorCount === "number");
   assert.ok(typeof result.warningCount === "number");
   assert.ok(Array.isArray(result.messages));
+  assert.strictEqual(result.available, false);
+  assert.ok(typeof result.failureMessage === "string");
 
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
@@ -80,6 +83,85 @@ test("runLinter prefers a project's local eslint package", async () => {
 
   assert.strictEqual(result.errorCount, 1);
   assert.strictEqual(result.messages[0]?.messages[0]?.ruleId, "local-eslint-rule");
+  assert.strictEqual(result.available, true);
+
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
+test("runLinter returns structured failure details for incompatible local eslint", async () => {
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "agentlint-broken-eslint-test-")
+  );
+  const nodeModulesDir = path.join(tempDir, "node_modules", "eslint");
+  fs.mkdirSync(nodeModulesDir, { recursive: true });
+
+  fs.writeFileSync(
+    path.join(nodeModulesDir, "package.json"),
+    JSON.stringify({ name: "eslint", main: "index.js" }),
+    "utf8"
+  );
+  fs.writeFileSync(
+    path.join(nodeModulesDir, "index.js"),
+    `class ESLint {
+      async lintFiles() {
+        throw new TypeError("expand is not a function");
+      }
+    }
+
+    module.exports = { ESLint };
+`,
+    "utf8"
+  );
+
+  const result = await runLinter(tempDir);
+
+  assert.strictEqual(result.available, false);
+  assert.strictEqual(result.failureMessage, "expand is not a function");
+  assert.strictEqual(result.errorCount, 0);
+  assert.strictEqual(result.warningCount, 0);
+
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
+test("scan command reports unavailable linter instead of clean output", () => {
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "agentlint-cli-broken-eslint-test-")
+  );
+  const nodeModulesDir = path.join(tempDir, "node_modules", "eslint");
+  fs.mkdirSync(nodeModulesDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(nodeModulesDir, "package.json"),
+    JSON.stringify({ name: "eslint", main: "index.js" }),
+    "utf8"
+  );
+  fs.writeFileSync(
+    path.join(nodeModulesDir, "index.js"),
+    `class ESLint {
+      async lintFiles() {
+        throw new TypeError("expand is not a function");
+      }
+    }
+
+    module.exports = { ESLint };
+`,
+    "utf8"
+  );
+
+  const cliOutput = execFileSync(
+    process.execPath,
+    ["./node_modules/tsx/dist/cli.mjs", "./src/index.ts", "scan", "-d", tempDir],
+    {
+      cwd: path.join(process.cwd()),
+      encoding: "utf8",
+    }
+  );
+
+  assert.match(cliOutput, /Linter could not run: expand is not a function/);
+  assert.match(cliOutput, /Fix the target repo, then rerun agentlint:/);
+  assert.match(cliOutput, /Run 'pnpm exec eslint \.' in the target repo to reproduce the local ESLint failure/);
+  assert.match(cliOutput, /Reinstall that repo's dependencies with 'pnpm install'/);
+  assert.doesNotMatch(cliOutput, /Code styling is clean/);
+  assert.match(cliOutput, /linter unavailable/);
 
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
