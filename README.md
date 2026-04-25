@@ -61,6 +61,27 @@ agentlint fix -d ./src
 
 AgentLint looks for a configuration file in your project directory. This allows you to define rule overrides and configure the AST analyzer for your specific needs.
 
+Example `.agentlintrc.json`:
+
+```json
+{
+  "skipRules": ["code-quality-no-any", "tool-overlapping"],
+  "rules": {
+    "security-input-validation": "error",
+    "spec-missing-rollback": "off"
+  },
+  "fixers": {
+    "code-quality-no-any": "./agentlint-fixers/custom-no-any-fixer.mjs#CustomNoAnyFixer"
+  }
+}
+```
+
+- `skipRules`: list of rule IDs to disable without setting each rule to `off`.
+- `rules`: rule severity overrides (`error`, `warn`, `off`).
+- `fixers`: map of `ruleId` to a custom fixer class module reference.
+  - String format: `./relative/path/to/module.mjs#ExportedClassName`
+  - The class must implement `fix(filePath, issues)` and return a list of fix results.
+
 ## Commands
 
 - `agentlint scan [options]`: Scan the workspace for AI code smells and vulnerabilities.
@@ -70,29 +91,23 @@ AgentLint looks for a configuration file in your project directory. This allows 
 - `agentlint --help`: Display help for commands.
 - `agentlint --version`: Display the current version.
 
-## Release Workflow (Auto-Versioning)
+## Release Workflow (Semantic Versioning)
 
-This project uses Changesets for automatic versioning and publishing.
+This project uses semantic-release for automatic versioning and npm publishing
+from commits merged into `main`.
 
-1. Add a changeset for user-facing changes:
+1. Use Conventional Commit messages for PR commits (for example: `fix: ...`,
+   `feat: ...`, `feat!: ...` or `BREAKING CHANGE:` in the body).
+2. Merge to `main`.
+3. GitHub Actions runs semantic-release and automatically:
+   - calculates the next version,
+   - publishes to npm,
+   - creates a GitHub Release.
 
-```bash
-pnpm changeset
-```
-
-2. Commit the generated markdown file in `.changeset/` with your code changes.
-3. Merge to `main`.
-4. GitHub Actions will either:
-  - Open/update a "Version Packages" PR with version/changelog updates, or
-  - Publish to npm when versioned changes are ready.
-
-Manual helpers:
+Manual helper:
 
 ```bash
-# Apply pending version bumps locally
-pnpm version-packages
-
-# Publish (used by CI)
+# Runs semantic-release locally (normally only used in CI)
 pnpm release
 ```
 

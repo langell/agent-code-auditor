@@ -2,6 +2,8 @@
 import { program } from "commander";
 import chalk from "chalk";
 import * as path from "path";
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
 import {
   runVulnerabilityScanner,
   runLinter,
@@ -14,10 +16,26 @@ import { runFixer } from "./fixers/index.js";
 
 import { loadConfig } from "./config.js";
 
+function getCliVersion(): string {
+  try {
+    const currentFile = fileURLToPath(import.meta.url);
+    const packageJsonPath = path.resolve(
+      path.dirname(currentFile),
+      "..",
+      "package.json",
+    );
+    const packageJsonRaw = readFileSync(packageJsonPath, "utf8");
+    const packageJson = JSON.parse(packageJsonRaw) as { version?: string };
+    return packageJson.version || "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
+
 program
   .name("agentlint")
   .description("Audit and fix AI-generated code issues.")
-  .version("1.0.0");
+  .version(getCliVersion());
 
 program
   .command("scan")
@@ -263,7 +281,7 @@ program
 
     console.log(chalk.yellow("\nRunning Agentic Auto-fix..."));
     const initialIssues = await runASTAnalyzer(targetDir, config);
-    const fixReport = await runFixer(targetDir, initialIssues);
+    const fixReport = await runFixer(targetDir, initialIssues, config);
 
     console.log(chalk.gray("=".repeat(80)));
     console.log(chalk.bold("  Auto-Fix Report"));

@@ -1,35 +1,48 @@
 import * as fs from "fs";
 import * as path from "path";
 
+type RuleLevel = "error" | "warn" | "off";
+
+export interface CustomFixerReference {
+  path: string;
+  exportName?: string;
+}
+
+type CustomFixerConfigValue = string | CustomFixerReference;
+
 export interface AgentLintConfig {
+  skipRules?: string[];
+  fixers?: Record<string, CustomFixerConfigValue>;
   rules: {
-    "no-placeholder-comments"?: "error" | "warn" | "off";
-    "no-insecure-renders"?: "error" | "warn" | "off";
-    "no-hallucinated-imports"?: "error" | "warn" | "off";
-    "spec-missing-acceptance-criteria"?: "error" | "warn" | "off";
-    "context-oversized"?: "error" | "warn" | "off";
-    "tool-overlapping"?: "error" | "warn" | "off";
-    "tool-weak-schema"?: "error" | "warn" | "off";
-    "security-prompt-injection"?: "error" | "warn" | "off";
-    "security-excessive-privileges"?: "error" | "warn" | "off";
-    "security-destructive-action"?: "error" | "warn" | "off";
-    "execution-missing-max-steps"?: "error" | "warn" | "off";
-    "verification-missing-tests"?: "error" | "warn" | "off";
-    "security-secret-leakage"?: "error" | "warn" | "off";
-    "code-quality-no-any"?: "error" | "warn" | "off";
-    "security-input-validation"?: "error" | "warn" | "off";
-    "architecture-atomic-transactions"?: "error" | "warn" | "off";
-    "spec-missing-rollback"?: "error" | "warn" | "off";
-    "security-ignore-instructions"?: "error" | "warn" | "off";
-    "tool-missing-examples"?: "error" | "warn" | "off";
-    "execution-no-dry-run"?: "error" | "warn" | "off";
-    "observability-missing-trace-id"?: "error" | "warn" | "off";
-    "context-unredacted-pii"?: "error" | "warn" | "off";
-    [key: string]: "error" | "warn" | "off" | undefined;
+    "no-placeholder-comments"?: RuleLevel;
+    "no-insecure-renders"?: RuleLevel;
+    "no-hallucinated-imports"?: RuleLevel;
+    "spec-missing-acceptance-criteria"?: RuleLevel;
+    "context-oversized"?: RuleLevel;
+    "tool-overlapping"?: RuleLevel;
+    "tool-weak-schema"?: RuleLevel;
+    "security-prompt-injection"?: RuleLevel;
+    "security-excessive-privileges"?: RuleLevel;
+    "security-destructive-action"?: RuleLevel;
+    "execution-missing-max-steps"?: RuleLevel;
+    "verification-missing-tests"?: RuleLevel;
+    "security-secret-leakage"?: RuleLevel;
+    "code-quality-no-any"?: RuleLevel;
+    "security-input-validation"?: RuleLevel;
+    "architecture-atomic-transactions"?: RuleLevel;
+    "spec-missing-rollback"?: RuleLevel;
+    "security-ignore-instructions"?: RuleLevel;
+    "tool-missing-examples"?: RuleLevel;
+    "execution-no-dry-run"?: RuleLevel;
+    "observability-missing-trace-id"?: RuleLevel;
+    "context-unredacted-pii"?: RuleLevel;
+    [key: string]: RuleLevel | undefined;
   };
 }
 
 export const defaultConfig: AgentLintConfig = {
+  skipRules: [],
+  fixers: {},
   rules: {
     "no-placeholder-comments": "error",
     "no-insecure-renders": "error",
@@ -62,9 +75,32 @@ export function loadConfig(targetDir: string): AgentLintConfig {
   if (fs.existsSync(configPath)) {
     try {
       const userConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
+      const skipRules = Array.isArray(userConfig.skipRules)
+        ? userConfig.skipRules.filter(
+            (rule: unknown) => typeof rule === "string",
+          )
+        : [];
+
+      const fixers =
+        userConfig.fixers && typeof userConfig.fixers === "object"
+          ? (userConfig.fixers as Record<string, CustomFixerConfigValue>)
+          : {};
+
+      const mergedRules = {
+        ...defaultConfig.rules,
+        ...(userConfig.rules || {}),
+      };
+
+      for (const skippedRule of skipRules) {
+        mergedRules[skippedRule] = "off";
+      }
+
       return {
         ...defaultConfig,
-        rules: { ...defaultConfig.rules, ...(userConfig.rules || {}) },
+        ...userConfig,
+        skipRules,
+        fixers,
+        rules: mergedRules,
       };
     } catch {
       console.warn("Failed to parse .agentlintrc.json. Using default config.");
