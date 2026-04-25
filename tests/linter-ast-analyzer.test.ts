@@ -43,7 +43,14 @@ test("runLinter prefers a project's local eslint package", async () => {
         this.options = options;
       }
 
-      async lintFiles() {
+      async lintFiles(patterns) {
+        if (
+          JSON.stringify(patterns) !==
+          JSON.stringify(["**/*.js", "**/*.ts", "**/*.jsx", "**/*.tsx"])
+        ) {
+          throw new Error("Unexpected lint patterns: " + JSON.stringify(patterns));
+        }
+
         return [
           {
             filePath: this.options.cwd + "/local.ts",

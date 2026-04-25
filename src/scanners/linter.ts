@@ -26,6 +26,8 @@ type ESLintConstructor = {
   outputFixes?(results: LintResultLike[]): Promise<void>;
 };
 
+const lintPatterns = ["**/*.js", "**/*.ts", "**/*.jsx", "**/*.tsx"];
+
 function resolveESLint(dir: string): ESLintConstructor {
   try {
     const projectRequire = createRequire(path.join(dir, "__agentlint__.cjs"));
@@ -62,8 +64,7 @@ export async function runLinter(
   });
 
   try {
-    // Run linter on common file pattern
-    const results = await eslint.lintFiles(["**/*.{js,ts,jsx,tsx}"]);
+    const results = await eslint.lintFiles(lintPatterns);
 
     if (fix && typeof ESLintClass.outputFixes === "function") {
       await ESLintClass.outputFixes(results);
