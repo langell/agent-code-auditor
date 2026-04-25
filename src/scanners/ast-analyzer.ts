@@ -43,11 +43,17 @@ function extractCommentText(line: string): string | null {
     }
 
     if (char === "/" && line[i + 1] === "*") {
-      return line.slice(i + 2).replace(/\*\/\s*$/, "").trim();
+      return line
+        .slice(i + 2)
+        .replace(/\*\/\s*$/, "")
+        .trim();
     }
 
     if (line.startsWith("<!--", i)) {
-      return line.slice(i + 4).replace(/-->\s*$/, "").trim();
+      return line
+        .slice(i + 4)
+        .replace(/-->\s*$/, "")
+        .trim();
     }
   }
 

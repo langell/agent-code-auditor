@@ -31,7 +31,9 @@ function resolveESLint(dir: string): ESLintConstructor {
     const projectRequire = createRequire(path.join(dir, "__agentlint__.cjs"));
     const eslintModule = projectRequire("eslint");
     const resolvedESLint =
-      eslintModule?.ESLint ?? eslintModule?.default?.ESLint ?? eslintModule?.default;
+      eslintModule?.ESLint ??
+      eslintModule?.default?.ESLint ??
+      eslintModule?.default;
 
     if (typeof resolvedESLint === "function") {
       return resolvedESLint as ESLintConstructor;
