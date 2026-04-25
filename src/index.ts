@@ -7,6 +7,9 @@ import {
   runLinter,
   runASTAnalyzer,
 } from "./scanners/index.js";
+import { VulnerabilityReport } from "./scanners/vulnerabilities.js";
+import { LinterReport } from "./scanners/linter.js";
+import { AgentIssue } from "./scanners/types.js";
 import { runFixer } from "./fixers/index.js";
 
 import { loadConfig } from "./config.js";
@@ -108,143 +111,141 @@ program
     printReport(vuln, lint, ast);
   });
 
-function printReport(vuln: any, lint: any, ast: any) {
-    const divider = chalk.gray("=".repeat(80));
-    const subDivider = chalk.gray("-".repeat(80));
+function printReport(
+  vuln: VulnerabilityReport,
+  lint: LinterReport,
+  ast: AgentIssue[],
+) {
+  const divider = chalk.gray("=".repeat(80));
+  const subDivider = chalk.gray("-".repeat(80));
 
-    console.log(divider);
-    console.log(chalk.bold("  AgentLint Report"));
-    console.log(divider + "\n");
+  console.log(divider);
+  console.log(chalk.bold("  AgentLint Report"));
+  console.log(divider + "\n");
 
-    // --- Vulnerabilities ---
-    console.log(chalk.cyan.bold("📦 Vulnerability Scanner"));
-    console.log(subDivider);
-    if (vuln.issues > 0) {
-      console.log(chalk.red(`  ❌ Issues: ${vuln.issues} (${vuln.details})\n`));
-      vuln.vulnerabilities.forEach((v: any) => {
-        console.log(
-          `    • ${chalk.bold(v.package)} (${chalk.red(v.severity)})`,
-        );
-        console.log(`      💡 ${chalk.italic("Suggestion:")} ${v.suggestion}`);
-      });
-      console.log();
-    } else {
-      console.log(chalk.green("  ✅ No vulnerability issues.\n"));
-    }
+  // --- Vulnerabilities ---
+  console.log(chalk.cyan.bold("📦 Vulnerability Scanner"));
+  console.log(subDivider);
+  if (vuln.issues > 0) {
+    console.log(chalk.red(`  ❌ Issues: ${vuln.issues} (${vuln.details})\n`));
+    vuln.vulnerabilities.forEach((v) => {
+      console.log(`    • ${chalk.bold(v.package)} (${chalk.red(v.severity)})`);
+      console.log(`      💡 ${chalk.italic("Suggestion:")} ${v.suggestion}`);
+    });
+    console.log();
+  } else {
+    console.log(chalk.green("  ✅ No vulnerability issues.\n"));
+  }
 
-    // --- Linter ---
-    console.log(chalk.cyan.bold("🎨 Linter Engine"));
-    console.log(subDivider);
-    if (lint.errorCount > 0 || lint.warningCount > 0) {
-      const errorStr =
-        lint.errorCount > 0
-          ? chalk.red(`${lint.errorCount} Errors`)
-          : `0 Errors`;
-      const warnStr =
-        lint.warningCount > 0
-          ? chalk.yellow(`${lint.warningCount} Warnings`)
-          : `0 Warnings`;
-      console.log(`  ⚠️  ${errorStr}, ${warnStr}\n`);
+  // --- Linter ---
+  console.log(chalk.cyan.bold("🎨 Linter Engine"));
+  console.log(subDivider);
+  if (lint.errorCount > 0 || lint.warningCount > 0) {
+    const errorStr =
+      lint.errorCount > 0 ? chalk.red(`${lint.errorCount} Errors`) : `0 Errors`;
+    const warnStr =
+      lint.warningCount > 0
+        ? chalk.yellow(`${lint.warningCount} Warnings`)
+        : `0 Warnings`;
+    console.log(`  ⚠️  ${errorStr}, ${warnStr}\n`);
 
-      lint.messages.forEach((result: any) => {
-        if (result.messages.length > 0) {
-          const relativePath = result.filePath;
-          console.log(chalk.bold(`  📄 File: ${relativePath}`));
-          result.messages.forEach((msg: any) => {
-            const icon =
-              msg.severity === 2 ? chalk.red("❌") : chalk.yellow("⚠️ ");
-            const color = msg.severity === 2 ? chalk.red : chalk.yellow;
+    lint.messages.forEach((result) => {
+      if (result.messages.length > 0) {
+        const relativePath = result.filePath;
+        console.log(chalk.bold(`  📄 File: ${relativePath}`));
+        result.messages.forEach((msg) => {
+          const icon =
+            msg.severity === 2 ? chalk.red("❌") : chalk.yellow("⚠️ ");
+          const color = msg.severity === 2 ? chalk.red : chalk.yellow;
+          console.log(
+            `    ${icon} ${color(`[Line ${msg.line}]`)} ${msg.message} ${chalk.gray(`(${msg.ruleId})`)}`,
+          );
+          if (msg.fix) {
             console.log(
-              `    ${icon} ${color(`[Line ${msg.line}]`)} ${msg.message} ${chalk.gray(`(${msg.ruleId})`)}`,
+              `      💡 ${chalk.italic("Suggestion:")} Auto-fix available via 'agentlint fix'.`,
             );
-            if (msg.fix) {
-              console.log(
-                `      💡 ${chalk.italic("Suggestion:")} Auto-fix available via 'agentlint fix'.`,
-              );
-            } else {
-              console.log(
-                `      💡 ${chalk.italic("Suggestion:")} Review ESLint rule '${msg.ruleId}' to resolve this issue.`,
-              );
-            }
-          });
-          console.log();
-        }
-      });
-    } else {
-      console.log(chalk.green("  ✅ Code styling is clean.\n"));
-    }
-
-    // --- AST Categories ---
-    const categories = [
-      { id: "Code Quality", icon: "✨", title: "Code Quality Lint" },
-      { id: "Spec", icon: "📋", title: "Spec Lint" },
-      { id: "Context", icon: "📚", title: "Context Lint" },
-      { id: "Tool", icon: "🛠️ ", title: "Tool/MCP Lint" },
-      { id: "Execution Safety", icon: "⚙️ ", title: "Execution Safety Lint" },
-      { id: "Execution", icon: "⚙️ ", title: "Execution Lint" },
-      { id: "Security", icon: "🔒", title: "Security Lint" },
-      {
-        id: "Verification/Security",
-        icon: "🛡️ ",
-        title: "Verification & Security Lint",
-      },
-    ];
-
-    for (const cat of categories) {
-      const catIssues = ast.filter((i: any) => i.category === cat.id);
-      if (catIssues.length > 0) {
-        console.log(chalk.cyan.bold(`${cat.icon} ${cat.title}`));
-        console.log(subDivider);
-
-        const grouped = catIssues.reduce(
-          (acc: any, issue: any) => {
-            if (!acc[issue.file]) acc[issue.file] = [];
-            acc[issue.file].push(issue);
-            return acc;
-          },
-          {} as Record<string, typeof catIssues>,
-        );
-
-        for (const [file, issues] of Object.entries(grouped)) {
-          console.log(chalk.bold(`  📄 File: ${file}`));
-          (issues as any[]).forEach((issue) => {
-            const icon =
-              issue.severity === "error"
-                ? chalk.red("❌")
-                : chalk.yellow("⚠️ ");
-            const color = issue.severity === "error" ? chalk.red : chalk.yellow;
+          } else {
             console.log(
-              `    ${icon} ${color(`[Line ${issue.line}]`)} ${issue.message} ${chalk.gray(`(${issue.ruleId})`)}`,
+              `      💡 ${chalk.italic("Suggestion:")} Review ESLint rule '${msg.ruleId}' to resolve this issue.`,
             );
-            if (issue.suggestion) {
-              console.log(
-                `      💡 ${chalk.italic("Suggestion:")} ${issue.suggestion}`,
-              );
-            }
-          });
-          console.log(); // blank line between files
-        }
+          }
+        });
+        console.log();
+      }
+    });
+  } else {
+    console.log(chalk.green("  ✅ Code styling is clean.\n"));
+  }
+
+  // --- AST Categories ---
+  const categories = [
+    { id: "Code Quality", icon: "✨", title: "Code Quality Lint" },
+    { id: "Spec", icon: "📋", title: "Spec Lint" },
+    { id: "Context", icon: "📚", title: "Context Lint" },
+    { id: "Tool", icon: "🛠️ ", title: "Tool/MCP Lint" },
+    { id: "Execution Safety", icon: "⚙️ ", title: "Execution Safety Lint" },
+    { id: "Execution", icon: "⚙️ ", title: "Execution Lint" },
+    { id: "Security", icon: "🔒", title: "Security Lint" },
+    {
+      id: "Verification/Security",
+      icon: "🛡️ ",
+      title: "Verification & Security Lint",
+    },
+  ];
+
+  for (const cat of categories) {
+    const catIssues = ast.filter((i) => i.category === cat.id);
+    if (catIssues.length > 0) {
+      console.log(chalk.cyan.bold(`${cat.icon} ${cat.title}`));
+      console.log(subDivider);
+
+      const grouped = catIssues.reduce(
+        (acc: Record<string, AgentIssue[]>, issue) => {
+          if (!acc[issue.file]) acc[issue.file] = [];
+          acc[issue.file].push(issue);
+          return acc;
+        },
+        {},
+      );
+
+      for (const [file, issues] of Object.entries(grouped)) {
+        console.log(chalk.bold(`  📄 File: ${file}`));
+        issues.forEach((issue) => {
+          const icon =
+            issue.severity === "error" ? chalk.red("❌") : chalk.yellow("⚠️ ");
+          const color = issue.severity === "error" ? chalk.red : chalk.yellow;
+          console.log(
+            `    ${icon} ${color(`[Line ${issue.line}]`)} ${issue.message} ${chalk.gray(`(${issue.ruleId})`)}`,
+          );
+          if (issue.suggestion) {
+            console.log(
+              `      💡 ${chalk.italic("Suggestion:")} ${issue.suggestion}`,
+            );
+          }
+        });
+        console.log(); // blank line between files
       }
     }
+  }
 
-    if (ast.length === 0) {
-      console.log(chalk.cyan.bold("🧠 Agentic Lint Rules"));
-      console.log(subDivider);
-      console.log(chalk.green("  ✅ No agentic smells found.\n"));
-    }
+  if (ast.length === 0) {
+    console.log(chalk.cyan.bold("🧠 Agentic Lint Rules"));
+    console.log(subDivider);
+    console.log(chalk.green("  ✅ No agentic smells found.\n"));
+  }
 
-    console.log(divider);
-    const summaryColor =
-      vuln.issues > 0 ||
-      lint.errorCount > 0 ||
-      ast.some((i: any) => i.severity === "error")
-        ? chalk.red
-        : chalk.green;
-    console.log(
-      summaryColor(
-        `✅ Scan complete. Found ${vuln.issues} vulnerabilities, ${lint.errorCount} lint errors, ${lint.warningCount} lint warnings, and ${ast.length} agentic smells.\n`,
-      ),
-    );
+  console.log(divider);
+  const summaryColor =
+    vuln.issues > 0 ||
+    lint.errorCount > 0 ||
+    ast.some((i) => i.severity === "error")
+      ? chalk.red
+      : chalk.green;
+  console.log(
+    summaryColor(
+      `✅ Scan complete. Found ${vuln.issues} vulnerabilities, ${lint.errorCount} lint errors, ${lint.warningCount} lint warnings, and ${ast.length} agentic smells.\n`,
+    ),
+  );
 }
 
 program
@@ -269,16 +270,24 @@ program
     console.log(chalk.gray("=".repeat(80)) + "\n");
 
     if (fixReport.fixes.length > 0) {
-      fixReport.fixes.forEach(fix => {
-         console.log(`  🔧 ${chalk.cyan(fix.file)}: ${fix.message} ${chalk.gray(`(${fix.ruleId})`)}`);
+      fixReport.fixes.forEach((fix) => {
+        console.log(
+          `  🔧 ${chalk.cyan(fix.file)}: ${fix.message} ${chalk.gray(`(${fix.ruleId})`)}`,
+        );
       });
-      console.log(chalk.green(`\n  ✅ Applied ${fixReport.fixes.length} agentic smell fixes.\n`));
+      console.log(
+        chalk.green(
+          `\n  ✅ Applied ${fixReport.fixes.length} agentic smell fixes.\n`,
+        ),
+      );
     } else {
       console.log(chalk.green(`  ✅ No agentic smells could be auto-fixed.\n`));
     }
 
-    console.log(chalk.blue("\nRe-scanning directory for remaining issues...\n"));
-    
+    console.log(
+      chalk.blue("\nRe-scanning directory for remaining issues...\n"),
+    );
+
     // Get final state
     const vuln = await runVulnerabilityScanner(targetDir);
     const finalLint = await runLinter(targetDir, false);
@@ -286,7 +295,6 @@ program
 
     // Print final audit report
     printReport(vuln, finalLint, finalAST);
-
   });
 
 program.parse();

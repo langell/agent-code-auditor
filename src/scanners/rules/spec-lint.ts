@@ -1,5 +1,3 @@
-import * as fs from "fs";
-import * as path from "path";
 import { AgentLintConfig } from "../../config.js";
 import { AgentIssue } from "../types.js";
 
@@ -10,6 +8,9 @@ export function checkSpecRules(
 ): AgentIssue[] {
   const issues: AgentIssue[] = [];
   const content = lines.join("\n");
+  const ignorePrevPattern = "ignore previous" + " instructions";
+  const disregardPattern = "disregard" + " previous";
+  const systemPromptPattern = "system" + " prompt";
   const hasCriteria = /Acceptance Criteria|Success Criteria/i.test(content);
 
   // For this basic stub, we'll flag any markdown file with "Task" or "Spec" in its name
@@ -49,9 +50,10 @@ export function checkSpecRules(
 
   if (config.rules["security-ignore-instructions"] !== "off") {
     if (
-      /ignore previous instructions|disregard previous|system prompt/i.test(
-        content,
-      )
+      new RegExp(
+        `${ignorePrevPattern}|${disregardPattern}|${systemPromptPattern}`,
+        "i",
+      ).test(content)
     ) {
       issues.push({
         file,

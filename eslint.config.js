@@ -21,5 +21,11 @@ export default tseslint.config(
       'security/detect-non-literal-fs-filename': 'off',
       'security/detect-object-injection': 'off'
     }
+  },
+  {
+    files: ['src/index.ts'],
+    rules: {
+      'n/hashbang': 'off'
+    }
   }
 );

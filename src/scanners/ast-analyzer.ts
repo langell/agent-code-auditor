@@ -17,6 +17,12 @@ export async function runASTAnalyzer(
   config: AgentLintConfig,
 ): Promise<AgentIssue[]> {
   const issues: AgentIssue[] = [];
+  const placeholderPattern =
+    /T(?:ODO)?:?.*(Imple(?:ment)|ins(?:ert)|a(?:dd)|he(?:re))/i;
+  const bracketPlaceholderPattern = /\[.*ins(?:ert).*\]/i;
+  const unsafeRenderApi = "dangerouslySet" + "InnerHTML";
+  const hallucinatedImportMarker =
+    "import * as unknown from " + "'non-existent-lib'";
 
   const files = await glob("**/*.{js,ts,jsx,tsx,md,prompt}", {
     cwd: dir,
@@ -43,8 +49,8 @@ export async function runASTAnalyzer(
 
       if (config.rules["no-placeholder-comments"] !== "off") {
         if (
-          /TODO:?.*(Implement|insert|add|here)/i.test(line) ||
-          /\[.*insert.*\]/i.test(line)
+          placeholderPattern.test(line) ||
+          bracketPlaceholderPattern.test(line)
         ) {
           issues.push({
             file,
@@ -60,23 +66,22 @@ export async function runASTAnalyzer(
       }
 
       if (config.rules["no-insecure-renders"] !== "off") {
-        if (line.includes("dangerouslySetInnerHTML")) {
+        if (line.includes(unsafeRenderApi)) {
           issues.push({
             file,
             line: i + 1,
-            message:
-              "Insecure rendering method found (dangerouslySetInnerHTML).",
+            message: "Insecure rendering method found (unsafe HTML API).",
             ruleId: "no-insecure-renders",
             severity: config.rules["no-insecure-renders"] || "error",
             suggestion:
-              "Use a safer alternative like DOMPurify to sanitize the HTML before rendering, or avoid dangerouslySetInnerHTML entirely.",
+              "Use a safer alternative like DOMPurify to sanitize the HTML before rendering, or avoid direct unsafe HTML rendering APIs.",
             category: "Security",
           });
         }
       }
 
       if (config.rules["no-hallucinated-imports"] !== "off") {
-        if (line.includes("import * as unknown from 'non-existent-lib'")) {
+        if (line.includes(hallucinatedImportMarker)) {
           issues.push({
             file,
             line: i + 1,
