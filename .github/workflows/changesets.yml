@@ -52,8 +52,8 @@ jobs:
         id: changesets
         uses: changesets/action@v1
         with:
-          version: pnpm version-packages
-          publish: pnpm release
+          version: pnpm dlx @changesets/cli version
+          publish: pnpm build && pnpm dlx @changesets/cli publish
           commit: "chore: version packages"
           title: "chore: version packages"
         env:
