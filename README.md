@@ -96,10 +96,18 @@ Example `.agentlintrc.json`:
 This project uses semantic-release for automatic versioning and npm publishing
 from commits merged into `main`.
 
-1. Use Conventional Commit messages for PR commits (for example: `fix: ...`,
-   `feat: ...`, `feat!: ...` or `BREAKING CHANGE:` in the body).
-2. Merge to `main`.
-3. GitHub Actions runs semantic-release and automatically:
+This repository does not use Changesets. Do not create changeset files or open
+version PRs manually.
+
+1. Use a Conventional Commit message for the change that should trigger the
+  release (for example: `fix: ...`, `feat: ...`, `feat!: ...` or
+  `BREAKING CHANGE:` in the body).
+2. Verify the package locally before pushing:
+  - `pnpm test`
+  - `pnpm test:coverage:check`
+  - `pnpm run publish:check`
+3. Push the commit to `main`.
+4. GitHub Actions runs semantic-release and automatically:
    - calculates the next version,
    - publishes to npm,
    - creates a GitHub Release.
