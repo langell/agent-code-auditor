@@ -65,7 +65,7 @@ program
 
     // Output CSV
     if (options.format === "csv") {
-      const escapeCSV = (str: string | number) =>
+      const escapeCSV = (str: string | number | null | undefined) =>
         `"${String(str).replace(/"/g, '""')}"`;
       console.log("Type,File,Line,Severity,Rule,Message,Suggestion");
 

@@ -37,10 +37,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Validate quality gates
-        run: |
-          pnpm lint
-          pnpm test
-          pnpm build
+        run: pnpm ci:check
 
       - name: Release
         run: pnpm release
