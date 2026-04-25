@@ -12,14 +12,71 @@ import { checkSecurityRules } from "./rules/security-lint.js";
 import { checkCodeQualityRules } from "./rules/code-quality-lint.js";
 import { checkVerificationRules } from "./rules/verification-lint.js";
 
+function extractCommentText(line: string): string | null {
+  const trimmed = line.trim();
+
+  if (trimmed.startsWith("*")) {
+    return trimmed.slice(1).trim();
+  }
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const previousChar = i > 0 ? line[i - 1] : "";
+
+    if (char === '"' || char === "'" || char === "`") {
+      let j = i + 1;
+
+      while (j < line.length) {
+        if (line[j] === char && line[j - 1] !== "\\") {
+          i = j;
+          break;
+        }
+
+        j += 1;
+      }
+
+      continue;
+    }
+
+    if (char === "/" && line[i + 1] === "/" && previousChar !== ":") {
+      return line.slice(i + 2).trim();
+    }
+
+    if (char === "/" && line[i + 1] === "*") {
+      return line.slice(i + 2).replace(/\*\/\s*$/, "").trim();
+    }
+
+    if (line.startsWith("<!--", i)) {
+      return line.slice(i + 4).replace(/-->\s*$/, "").trim();
+    }
+  }
+
+  return null;
+}
+
+function isPlaceholderComment(line: string): boolean {
+  const commentText = extractCommentText(line);
+
+  if (!commentText) {
+    return false;
+  }
+
+  const placeholderPatterns = [
+    /\bTODO\b[:\s-]*(?:implement|complete|finish|fill\s+in|write\s+the\s+implementation|replace\s+with\s+actual)\b/i,
+    /\b(?:implement|insert|add|fill\s+in|replace\s+with\s+actual|write)\b.*\b(?:here|code|logic|implementation)\b/i,
+    /\byour\s+code\s+here\b/i,
+    /\bplaceholder\b/i,
+    /\[(?:[^\]]*\b(?:insert|implement|fill\s+in|placeholder|your\s+code|add\s+logic)\b[^\]]*)\]/i,
+  ];
+
+  return placeholderPatterns.some((pattern) => pattern.test(commentText));
+}
+
 export async function runASTAnalyzer(
   dir: string,
   config: AgentLintConfig,
 ): Promise<AgentIssue[]> {
   const issues: AgentIssue[] = [];
-  const placeholderPattern =
-    /T(?:ODO)?:?.*(Imple(?:ment)|ins(?:ert)|a(?:dd)|he(?:re))/i;
-  const bracketPlaceholderPattern = /\[.*ins(?:ert).*\]/i;
   const unsafeRenderApi = "dangerouslySet" + "InnerHTML";
   const hallucinatedImportMarker =
     "import * as unknown from " + "'non-existent-lib'";
@@ -48,10 +105,7 @@ export async function runASTAnalyzer(
       const line = lines[i];
 
       if (config.rules["no-placeholder-comments"] !== "off") {
-        if (
-          placeholderPattern.test(line) ||
-          bracketPlaceholderPattern.test(line)
-        ) {
+        if (isPlaceholderComment(line)) {
           issues.push({
             file,
             line: i + 1,

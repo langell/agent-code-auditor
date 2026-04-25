@@ -1,16 +1,60 @@
+import { createRequire } from "node:module";
+import * as path from "node:path";
 import { ESLint } from "eslint";
+
+type LintMessage = {
+  severity: number;
+  line?: number;
+  ruleId?: string | null;
+  message: string;
+  fix?: unknown;
+};
+
+type LintResultLike = {
+  filePath: string;
+  errorCount: number;
+  warningCount: number;
+  messages: LintMessage[];
+};
+
+type ESLintLike = {
+  lintFiles(patterns: string[]): Promise<LintResultLike[]>;
+};
+
+type ESLintConstructor = {
+  new (options: { cwd: string; fix: boolean }): ESLintLike;
+  outputFixes?(results: LintResultLike[]): Promise<void>;
+};
+
+function resolveESLint(dir: string): ESLintConstructor {
+  try {
+    const projectRequire = createRequire(path.join(dir, "__agentlint__.cjs"));
+    const eslintModule = projectRequire("eslint");
+    const resolvedESLint =
+      eslintModule?.ESLint ?? eslintModule?.default?.ESLint ?? eslintModule?.default;
+
+    if (typeof resolvedESLint === "function") {
+      return resolvedESLint as ESLintConstructor;
+    }
+  } catch {
+    // Fall back to the bundled ESLint when the target project does not provide one.
+  }
+
+  return ESLint as unknown as ESLintConstructor;
+}
 
 export interface LinterReport {
   errorCount: number;
   warningCount: number;
-  messages: ESLint.LintResult[];
+  messages: LintResultLike[];
 }
 
 export async function runLinter(
   dir: string,
   fix: boolean = false,
 ): Promise<LinterReport> {
-  const eslint = new ESLint({
+  const ESLintClass = resolveESLint(dir);
+  const eslint = new ESLintClass({
     cwd: dir,
     fix: fix,
   });
@@ -19,8 +63,8 @@ export async function runLinter(
     // Run linter on common file pattern
     const results = await eslint.lintFiles(["**/*.{js,ts,jsx,tsx}"]);
 
-    if (fix) {
-      await ESLint.outputFixes(results);
+    if (fix && typeof ESLintClass.outputFixes === "function") {
+      await ESLintClass.outputFixes(results);
     }
 
     const errorCount = results.reduce(
@@ -39,7 +83,7 @@ export async function runLinter(
     };
   } catch (error) {
     console.error(
-      "ESLint scanning failed. Has an ESLint config been initialized in this project?",
+      "ESLint scanning failed. The target project may have a missing or incompatible ESLint setup.",
       error,
     );
     return { errorCount: 0, warningCount: 0, messages: [] };

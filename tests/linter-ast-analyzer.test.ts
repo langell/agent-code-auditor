@@ -24,6 +24,59 @@ test("runLinter handles project without eslint config gracefully", async () => {
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
+test("runLinter prefers a project's local eslint package", async () => {
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "agentlint-local-eslint-test-")
+  );
+  const nodeModulesDir = path.join(tempDir, "node_modules", "eslint");
+  fs.mkdirSync(nodeModulesDir, { recursive: true });
+
+  fs.writeFileSync(
+    path.join(nodeModulesDir, "package.json"),
+    JSON.stringify({ name: "eslint", main: "index.js" }),
+    "utf8"
+  );
+  fs.writeFileSync(
+    path.join(nodeModulesDir, "index.js"),
+    `class ESLint {
+      constructor(options) {
+        this.options = options;
+      }
+
+      async lintFiles() {
+        return [
+          {
+            filePath: this.options.cwd + "/local.ts",
+            errorCount: 1,
+            warningCount: 0,
+            messages: [
+              {
+                severity: 2,
+                line: 1,
+                ruleId: "local-eslint-rule",
+                message: "Used local eslint runtime"
+              }
+            ]
+          }
+        ];
+      }
+
+      static async outputFixes() {}
+    }
+
+    module.exports = { ESLint };
+`,
+    "utf8"
+  );
+
+  const result = await runLinter(tempDir);
+
+  assert.strictEqual(result.errorCount, 1);
+  assert.strictEqual(result.messages[0]?.messages[0]?.ruleId, "local-eslint-rule");
+
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
 test("runASTAnalyzer detects placeholder comments", async () => {
   const tempDir = fs.mkdtempSync(
     path.join(os.tmpdir(), "agentlint-ast-placeholder-test-")
@@ -38,6 +91,72 @@ test("runASTAnalyzer detects placeholder comments", async () => {
     (i) => i.ruleId === "no-placeholder-comments"
   );
   assert.ok(placeholderIssues.length > 0);
+
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
+test("runASTAnalyzer does not flag valid TODO comments as placeholders", async () => {
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "agentlint-valid-todo-test-")
+  );
+  const filePath = path.join(tempDir, "code.ts");
+  fs.writeFileSync(
+    filePath,
+    "// TODO: investigate auth retry bug\nfunction test() {}",
+    "utf8"
+  );
+
+  const config = loadConfig(".");
+  const issues = await runASTAnalyzer(tempDir, config);
+
+  const placeholderIssues = issues.filter(
+    (i) => i.ruleId === "no-placeholder-comments"
+  );
+  assert.strictEqual(placeholderIssues.length, 0);
+
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
+test("runASTAnalyzer does not flag placeholder phrases inside strings", async () => {
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "agentlint-placeholder-string-test-")
+  );
+  const filePath = path.join(tempDir, "code.ts");
+  fs.writeFileSync(
+    filePath,
+    'const note = "TODO: Implement this function";\nfunction test() {}',
+    "utf8"
+  );
+
+  const config = loadConfig(".");
+  const issues = await runASTAnalyzer(tempDir, config);
+
+  const placeholderIssues = issues.filter(
+    (i) => i.ruleId === "no-placeholder-comments"
+  );
+  assert.strictEqual(placeholderIssues.length, 0);
+
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
+test("runASTAnalyzer detects inline placeholder comments", async () => {
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "agentlint-inline-placeholder-test-")
+  );
+  const filePath = path.join(tempDir, "code.ts");
+  fs.writeFileSync(
+    filePath,
+    "const result = compute(); // TODO: implement fallback logic here",
+    "utf8"
+  );
+
+  const config = loadConfig(".");
+  const issues = await runASTAnalyzer(tempDir, config);
+
+  const placeholderIssues = issues.filter(
+    (i) => i.ruleId === "no-placeholder-comments"
+  );
+  assert.strictEqual(placeholderIssues.length, 1);
 
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
