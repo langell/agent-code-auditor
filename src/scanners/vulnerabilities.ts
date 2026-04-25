@@ -64,8 +64,11 @@ export async function runVulnerabilityScanner(
       // Different package managers might have different JSON output structures
       const vulnerabilitiesObj =
         result.metadata?.vulnerabilities || result.vulnerabilities || {};
-      const totalIssues = Object.values(vulnerabilitiesObj).reduce(
-        (acc, value) => acc + (typeof value === "number" ? value : 0),
+      const vulnerabilityCounts = Object.values(vulnerabilitiesObj).filter(
+        (value): value is number => typeof value === "number",
+      );
+      const totalIssues = vulnerabilityCounts.reduce(
+        (acc, value) => acc + value,
         0,
       );
 
