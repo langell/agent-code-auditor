@@ -1,6 +1,6 @@
 {
   "name": "agent-code-auditor",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Configurable audit tool and linter for AI-generated code",
   "main": "dist/index.js",
   "type": "module",
@@ -15,9 +15,7 @@
     "test:coverage": "c8 --include=src/**/*.ts --reporter=text-summary --reporter=text pnpm test",
     "test:coverage:check": "c8 --include=src/**/*.ts --check-coverage --lines 80 --functions 80 --branches 80 --statements 80 pnpm test",
     "lint": "eslint src",
-    "changeset": "changeset",
-    "version-packages": "pnpm exec changeset version",
-    "release": "pnpm build && pnpm exec changeset publish",
+    "release": "semantic-release",
     "publish:check": "pnpm build && npm pack --dry-run",
     "publish:npm": "pnpm run publish:check && npm publish",
     "test:scan": "pnpm build && pnpm start scan -d ./test-project",
@@ -34,8 +32,11 @@
     "glob": "13.0.6"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.31.0",
     "@eslint/js": "^10.0.1",
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/github": "^11.0.6",
+    "@semantic-release/npm": "^12.0.2",
+    "@semantic-release/release-notes-generator": "^14.1.0",
     "@types/node": "25.6.0",
     "@typescript-eslint/eslint-plugin": "8.58.2",
     "@typescript-eslint/parser": "8.58.2",
@@ -45,6 +46,7 @@
     "eslint-plugin-security": "^4.0.0",
     "c8": "^10.1.3",
     "prettier": "^3.8.3",
+    "semantic-release": "^24.2.5",
     "tsx": "4.21.0",
     "typescript": "6.0.3",
     "typescript-eslint": "^8.58.2"

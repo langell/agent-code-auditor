@@ -70,29 +70,23 @@ AgentLint looks for a configuration file in your project directory. This allows 
 - `agentlint --help`: Display help for commands.
 - `agentlint --version`: Display the current version.
 
-## Release Workflow (Auto-Versioning)
+## Release Workflow (Semantic Versioning)
 
-This project uses Changesets for automatic versioning and publishing.
+This project uses semantic-release for automatic versioning and npm publishing
+from commits merged into `main`.
 
-1. Add a changeset for user-facing changes:
+1. Use Conventional Commit messages for PR commits (for example: `fix: ...`,
+   `feat: ...`, `feat!: ...` or `BREAKING CHANGE:` in the body).
+2. Merge to `main`.
+3. GitHub Actions runs semantic-release and automatically:
+   - calculates the next version,
+   - publishes to npm,
+   - creates a GitHub Release.
 
-```bash
-pnpm changeset
-```
-
-2. Commit the generated markdown file in `.changeset/` with your code changes.
-3. Merge to `main`.
-4. GitHub Actions will either:
-  - Open/update a "Version Packages" PR with version/changelog updates, or
-  - Publish to npm when versioned changes are ready.
-
-Manual helpers:
+Manual helper:
 
 ```bash
-# Apply pending version bumps locally
-pnpm version-packages
-
-# Publish (used by CI)
+# Runs semantic-release locally (normally only used in CI)
 pnpm release
 ```
 

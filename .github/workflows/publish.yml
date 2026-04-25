@@ -1,56 +1,49 @@
-name: Publish to npm
+name: Semantic Release
 
 on:
   workflow_dispatch:
-  release:
-    types: [published]
-  # Alternatively, you can uncomment the push block below to publish on any tag creation
-  # push:
-  #   tags:
-  #     - 'v*'
+  push:
+    branches:
+      - main
 
 jobs:
-  build-and-publish:
+  release:
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
-          registry-url: 'https://registry.npmjs.org'
+          node-version: "22"
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v3
         with:
           run_install: false
 
-      - name: Check pnpm version
-        run: pnpm --version
-
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
-
-      - name: Setup pnpm cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
-
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
-      - name: Build project
-        run: pnpm run build
+      - name: Validate quality gates
+        run: |
+          pnpm lint
+          pnpm test
+          pnpm build
 
-      - name: Publish to npm
-        run: npm publish
+      - name: Release
+        run: pnpm release
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
