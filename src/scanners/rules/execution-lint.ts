@@ -1,3 +1,4 @@
+import * as ts from "typescript";
 import { AgentLintConfig } from "../../config.js";
 import { AgentIssue } from "../types.js";
 
@@ -5,41 +6,109 @@ export function checkExecutionRules(
   file: string,
   lines: string[],
   config: AgentLintConfig,
+  sourceFile?: ts.SourceFile,
 ): AgentIssue[] {
   const issues: AgentIssue[] = [];
-  if (config.rules["execution-missing-max-steps"] === "off") return issues;
 
-  // Basic heuristic: While loop or agent init without limits.
   let hasWhileTrue = false;
   let hasMaxSteps = false;
+  let mutations = 0;
+  let hasTransaction = false;
+  let hasMutatingCall = false;
+  const whileTrueNodes: ts.Node[] = [];
 
-  for (let i = 0; i < lines.length; i++) {
-    if (/while\s*\(\s*true\s*\)/.test(lines[i])) hasWhileTrue = true;
-    if (lines[i].includes("maxSteps") || lines[i].includes("maxIterations"))
-      hasMaxSteps = true;
+  const content = sourceFile ? sourceFile.text : lines.join("\n");
+  hasMaxSteps = content.includes("maxSteps") || content.includes("maxIterations");
+
+  if (sourceFile) {
+    function visit(node: ts.Node) {
+      if (node.kind === ts.SyntaxKind.WhileStatement) {
+        const whileStmt = node as ts.WhileStatement;
+        if (whileStmt.expression.kind === ts.SyntaxKind.TrueKeyword) {
+          hasWhileTrue = true;
+          whileTrueNodes.push(whileStmt);
+        }
+      }
+
+      if (node.kind === ts.SyntaxKind.CallExpression) {
+        const callExpr = node as ts.CallExpression;
+        const exprText = callExpr.expression.getText(sourceFile);
+        
+        if (
+          exprText === "db.insert" ||
+          exprText === "db.update" ||
+          exprText === "db.delete"
+        ) {
+          mutations++;
+          hasMutatingCall = true;
+        }
+
+        if (exprText === "db.transaction") {
+          hasTransaction = true;
+        }
+
+        if (
+          exprText === "fs.writeFileSync" ||
+          exprText === "child_process.exec"
+        ) {
+          hasMutatingCall = true;
+        }
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(sourceFile);
+  } else {
+    // Fallback for non-TS files
+    hasWhileTrue = /while\s*\(\s*true\s*\)/.test(content);
+    const dbMatches = content.match(/db\.(insert|update|delete)/g) || [];
+    mutations = dbMatches.length;
+    hasTransaction = content.includes("db.transaction");
+    hasMutatingCall =
+      /child_process\.exec|fs\.writeFileSync|db\.(insert|update|delete)/.test(
+        content,
+      );
   }
 
-  if (hasWhileTrue && !hasMaxSteps) {
-    issues.push({
-      file,
-      line: 1,
-      message:
-        "Agent loop detected without explicit max-steps or retry budget.",
-      ruleId: "execution-missing-max-steps",
-      severity: config.rules["execution-missing-max-steps"] || "warn",
-      suggestion:
-        "Add a max-steps limit or timeout to prevent runaway autonomy and infinite loops.",
-      category: "Execution Safety",
-    });
+  if (config.rules["execution-missing-max-steps"] !== "off") {
+    if (hasWhileTrue && !hasMaxSteps) {
+      if (whileTrueNodes.length > 0) {
+        for (const node of whileTrueNodes) {
+          const { line } = sourceFile!.getLineAndCharacterOfPosition(
+            node.getStart(),
+          );
+          issues.push({
+            file,
+            line: line + 1,
+            message:
+              "Agent loop detected without explicit max-steps or retry budget.",
+            ruleId: "execution-missing-max-steps",
+            severity: config.rules["execution-missing-max-steps"] || "warn",
+            suggestion:
+              "Add a max-steps limit or timeout to prevent runaway autonomy and infinite loops.",
+            category: "Execution Safety",
+            startPos: node.getStart(),
+            endPos: node.getEnd(),
+          });
+        }
+      } else {
+        issues.push({
+          file,
+          line: 1,
+          message:
+            "Agent loop detected without explicit max-steps or retry budget.",
+          ruleId: "execution-missing-max-steps",
+          severity: config.rules["execution-missing-max-steps"] || "warn",
+          suggestion:
+            "Add a max-steps limit or timeout to prevent runaway autonomy and infinite loops.",
+          category: "Execution Safety",
+        });
+      }
+    }
   }
 
   // 2. Atomic Transactions
   if (config.rules["architecture-atomic-transactions"] !== "off") {
-    const content = lines.join("\n");
-    // Heuristic: If we see db.insert or db.update multiple times but no db.transaction
-    const mutations = (content.match(/db\.(insert|update|delete)/g) || [])
-      .length;
-    if (mutations > 1 && !content.includes("db.transaction")) {
+    if (mutations > 1 && !hasTransaction) {
       issues.push({
         file,
         line: 1,
@@ -56,13 +125,7 @@ export function checkExecutionRules(
 
   // 3. Dry-run capabilities
   if (config.rules["execution-no-dry-run"] !== "off") {
-    const content = lines.join("\n");
-    if (
-      /child_process\.exec|fs\.writeFileSync|db\.(insert|update|delete)/.test(
-        content,
-      ) &&
-      !/dryRun|simulate/i.test(content)
-    ) {
+    if (hasMutatingCall && !/dryRun|simulate/i.test(content)) {
       issues.push({
         file,
         line: 1,

@@ -42,29 +42,50 @@ export async function fixExecutionRules(
     !content.includes("maxSteps") &&
     !content.includes("maxIterations")
   ) {
-    const pattern = /while\s*\(\s*true\s*\)/g;
-    const matches = Array.from(content.matchAll(pattern));
+    let loopVar = "__agentStep";
+    let suffix = 1;
+    while (content.includes(loopVar)) {
+      loopVar = `__agentStep${suffix}`;
+      suffix += 1;
+    }
+    const replacement = `for (let ${loopVar} = 0; ${loopVar} < ${DEFAULT_MAX_STEPS}; ${loopVar}++)`;
 
-    if (matches.length > 0) {
-      let loopVar = "__agentStep";
-      let suffix = 1;
-      while (content.includes(loopVar)) {
-        loopVar = `__agentStep${suffix}`;
-        suffix += 1;
+    const astIssues = maxStepIssues.filter((i) => i.startPos !== undefined && i.endPos !== undefined);
+    
+    if (astIssues.length > 0) {
+      astIssues.sort((a, b) => b.startPos! - a.startPos!);
+      for (const issue of astIssues) {
+        // the node is the whole WhileStatement. 
+        // We only want to replace the `while (...)` part, which is from getStart() to the closing parenthesis before the body.
+        // Actually, matching `while\\s*\\(\\s*true\\s*\\)` inside the node string is safer.
+        const nodeText = content.slice(issue.startPos!, issue.endPos!);
+        const replacedText = nodeText.replace(/while\s*\(\s*true\s*\)/, replacement);
+        
+        if (replacedText !== nodeText) {
+          content = content.slice(0, issue.startPos!) + replacedText + content.slice(issue.endPos!);
+          fixes.push({
+            file,
+            fixed: true,
+            ruleId: "execution-missing-max-steps",
+            message: `Bounded loop at offset ${issue.startPos} with max ${DEFAULT_MAX_STEPS} steps.`,
+          });
+        }
       }
-
-      const replacement = `for (let ${loopVar} = 0; ${loopVar} < ${DEFAULT_MAX_STEPS}; ${loopVar}++)`;
-      content = content.replace(pattern, replacement);
-
-      for (const match of matches) {
-        const index = match.index ?? 0;
-        const line = originalContent.slice(0, index).split("\n").length;
-        fixes.push({
-          file,
-          fixed: true,
-          ruleId: "execution-missing-max-steps",
-          message: `Bounded loop on line ${line} with max ${DEFAULT_MAX_STEPS} steps.`,
-        });
+    } else {
+      const pattern = /while\s*\(\s*true\s*\)/g;
+      const matches = Array.from(content.matchAll(pattern));
+      if (matches.length > 0) {
+        content = content.replace(pattern, replacement);
+        for (const match of matches) {
+          const index = match.index ?? 0;
+          const line = originalContent.slice(0, index).split("\n").length;
+          fixes.push({
+            file,
+            fixed: true,
+            ruleId: "execution-missing-max-steps",
+            message: `Bounded loop on line ${line} with max ${DEFAULT_MAX_STEPS} steps.`,
+          });
+        }
       }
     }
   }

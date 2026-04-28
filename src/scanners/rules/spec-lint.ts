@@ -1,10 +1,13 @@
 import { AgentLintConfig } from "../../config.js";
 import { AgentIssue } from "../types.js";
 
+import * as ts from "typescript";
+
 export function checkSpecRules(
   file: string,
   lines: string[],
   config: AgentLintConfig,
+  sourceFile?: ts.SourceFile,
 ): AgentIssue[] {
   const issues: AgentIssue[] = [];
   const content = lines.join("\n");
@@ -22,7 +25,7 @@ export function checkSpecRules(
         line: 1, // File level issue
         message: "Missing explicit acceptance criteria or success conditions.",
         ruleId: "spec-missing-acceptance-criteria",
-        severity: config.rules["spec-missing-acceptance-criteria"] || "warn",
+        severity: config.rules["spec-missing-acceptance-criteria"] === "warn" ? "warn" : "error",
         suggestion:
           'Add an "Acceptance Criteria" section to define clear intent and stop conditions.',
         category: "Spec",
@@ -40,7 +43,7 @@ export function checkSpecRules(
         line: 1,
         message: "Missing rollback or abort conditions.",
         ruleId: "spec-missing-rollback",
-        severity: config.rules["spec-missing-rollback"] || "warn",
+        severity: config.rules["spec-missing-rollback"] === "warn" ? "warn" : "error",
         suggestion:
           "Define explicit rollback or abort conditions for when the agent fails or encounters safety bounds.",
         category: "Spec",
@@ -60,7 +63,7 @@ export function checkSpecRules(
         line: 1, // Using line 1 for simplicity of whole-file match here
         message: "Found potential jailbreak phrases in specification/prompt.",
         ruleId: "security-ignore-instructions",
-        severity: config.rules["security-ignore-instructions"] || "error",
+        severity: config.rules["security-ignore-instructions"] === "warn" ? "warn" : "error",
         suggestion:
           "Ensure prompts or string templates do not contain common prompt injection evasion techniques.",
         category: "Security",

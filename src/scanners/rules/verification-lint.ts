@@ -3,11 +3,14 @@ import * as path from "path";
 import { AgentLintConfig } from "../../config.js";
 import { AgentIssue } from "../types.js";
 
+import * as ts from "typescript";
+
 export function checkVerificationRules(
   file: string,
   lines: string[],
   config: AgentLintConfig,
   dir: string,
+  sourceFile?: ts.SourceFile,
 ): AgentIssue[] {
   const issues: AgentIssue[] = [];
 
@@ -41,7 +44,7 @@ export function checkVerificationRules(
             line: 1,
             message: `Missing corresponding test file for business logic module.`,
             ruleId: "verification-missing-tests",
-            severity: config.rules["verification-missing-tests"] || "warn",
+            severity: config.rules["verification-missing-tests"] === "warn" ? "warn" : "error",
             suggestion:
               "Every core business logic file MUST include a corresponding test file.",
             category: "Verification/Security",

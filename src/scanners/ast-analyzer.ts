@@ -1,8 +1,9 @@
 import * as fs from "fs";
 import * as path from "path";
 import { glob } from "glob";
+import * as ts from "typescript";
 import { AgentLintConfig } from "../config.js";
-import { AgentIssue } from "./types.js";
+import { AgentIssue, ToolDeclaration } from "./types.js";
 
 import { checkSpecRules } from "./rules/spec-lint.js";
 import { checkContextRules } from "./rules/context-lint.js";
@@ -69,7 +70,7 @@ function isPlaceholderComment(line: string): boolean {
 
   const placeholderPatterns = [
     /\bTODO\b[:\s-]*(?:implement|complete|finish|fill\s+in|write\s+the\s+implementation|replace\s+with\s+actual)\b/i,
-    /\b(?:implement|insert|add|fill\s+in|replace\s+with\s+actual|write)\b.*\b(?:here|code|logic|implementation)\b/i,
+    /\b(?:implement|insert|add|fill\s+in|replace\s+with\s+actual|write)\b.{0,100}?\b(?:here|code|logic|implementation)\b/i,
     /\byour\s+code\s+here\b/i,
     /\bplaceholder\b/i,
     /\[(?:[^\]]*\b(?:insert|implement|fill\s+in|placeholder|your\s+code|add\s+logic)\b[^\]]*)\]/i,
@@ -92,18 +93,25 @@ export async function runASTAnalyzer(
     ignore: ["node_modules/**", "dist/**"],
   });
 
+  const globalTools: ToolDeclaration[] = [];
+
   for (const file of files) {
     const fullPath = path.join(dir, file);
     const content = fs.readFileSync(fullPath, "utf8");
     const lines = content.split("\n");
 
+    let sourceFile: ts.SourceFile | undefined;
+    if (file.endsWith(".ts") || file.endsWith(".tsx") || file.endsWith(".js") || file.endsWith(".jsx")) {
+      sourceFile = ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true);
+    }
+
     // Run modular rules
-    issues.push(...checkSpecRules(file, lines, config));
-    issues.push(...checkContextRules(file, lines, config));
-    issues.push(...checkToolRules(file, lines, config));
-    issues.push(...checkExecutionRules(file, lines, config));
-    issues.push(...checkSecurityRules(file, lines, config));
-    issues.push(...checkCodeQualityRules(file, lines, config));
+    issues.push(...checkSpecRules(file, lines, config, sourceFile));
+    issues.push(...checkContextRules(file, lines, config, sourceFile));
+    issues.push(...checkToolRules(file, lines, config, sourceFile, globalTools));
+    issues.push(...checkExecutionRules(file, lines, config, sourceFile));
+    issues.push(...checkSecurityRules(file, lines, config, sourceFile));
+    issues.push(...checkCodeQualityRules(file, lines, config, sourceFile));
     issues.push(...checkVerificationRules(file, lines, config, dir));
 
     // Keep the original 3 rules for backward compatibility in the General/Tool categories
@@ -153,6 +161,25 @@ export async function runASTAnalyzer(
             category: "Execution",
           });
         }
+      }
+    }
+  }
+
+  if (config.rules["tool-overlapping"] !== "off") {
+    const seenTools = new Map<string, string>();
+    for (const tool of globalTools) {
+      if (seenTools.has(tool.name)) {
+        issues.push({
+          file: tool.file,
+          line: tool.line,
+          message: `Tool '${tool.name}' overlaps with a tool defined in ${seenTools.get(tool.name)}.`,
+          ruleId: "tool-overlapping",
+          severity: config.rules["tool-overlapping"] || "error",
+          suggestion: "Ensure each tool has a distinct name and purpose across the workspace.",
+          category: "Tool",
+        });
+      } else {
+        seenTools.set(tool.name, tool.file);
       }
     }
   }

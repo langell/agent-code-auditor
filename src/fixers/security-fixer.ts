@@ -2,8 +2,6 @@ import * as fs from "fs";
 import { AgentIssue } from "../scanners/types.js";
 import { FixResult } from "./types.js";
 
-// Safety note: fixer routines support dryRun previews and explicit approve gates at call sites.
-
 function insertAfterImports(content: string, block: string): string {
   const lines = content.split("\n");
   let insertAt = 0;
@@ -49,39 +47,28 @@ export async function fixSecurityRules(
   const fixes: FixResult[] = [];
   if (!fs.existsSync(file)) return fixes;
 
-  const hasIgnoreInstructions = issues.some(
-    (i) => i.ruleId === "security-ignore-instructions",
-  );
-  const hasInsecureRenders = issues.some(
-    (i) => i.ruleId === "no-insecure-renders",
-  );
-  const hasInputValidation = issues.some(
-    (i) => i.ruleId === "security-input-validation",
-  );
-  const hasDestructiveAction = issues.some(
-    (i) => i.ruleId === "security-destructive-action",
-  );
+  const ignoreIssues = issues.filter(i => i.ruleId === "security-ignore-instructions");
+  const insecureRenders = issues.filter(i => i.ruleId === "no-insecure-renders");
+  const inputValidationIssues = issues.filter(i => i.ruleId === "security-input-validation");
+  const destructiveActionIssues = issues.filter(i => i.ruleId === "security-destructive-action");
 
   if (
-    !hasIgnoreInstructions &&
-    !hasInsecureRenders &&
-    !hasInputValidation &&
-    !hasDestructiveAction
+    ignoreIssues.length === 0 &&
+    insecureRenders.length === 0 &&
+    inputValidationIssues.length === 0 &&
+    destructiveActionIssues.length === 0
   ) {
     return fixes;
   }
 
   let content = fs.readFileSync(file, "utf8");
   let modified = false;
-  const ignoreInstructionsPattern = new RegExp(
-    "ignore previous" + " instructions",
-    "gi",
-  );
-  const disregardPattern = new RegExp("disregard" + " previous", "gi");
-  const systemPromptPattern = new RegExp("system" + " prompt", "gi");
-  const unsafeRenderApi = "dangerouslySet" + "InnerHTML";
 
-  if (hasIgnoreInstructions) {
+  if (ignoreIssues.length > 0) {
+    const ignoreInstructionsPattern = /ignore previous\s+instructions/gi;
+    const disregardPattern = /disregard\s+previous/gi;
+    const systemPromptPattern = /system\s+prompt/gi;
+
     const before = content;
     content = content
       .replace(ignoreInstructionsPattern, "follow the project instructions")
@@ -99,7 +86,8 @@ export async function fixSecurityRules(
     }
   }
 
-  if (hasInsecureRenders) {
+  if (insecureRenders.length > 0) {
+    const unsafeRenderApi = "dangerouslySet" + "InnerHTML";
     const before = content;
     const unsafeRenderAssignmentPattern = new RegExp(
       `${unsafeRenderApi}\\s*=`,
@@ -134,7 +122,7 @@ export async function fixSecurityRules(
     }
   }
 
-  if (hasInputValidation) {
+  if (inputValidationIssues.length > 0) {
     const alreadyValidated =
       content.includes(".parse(") ||
       content.includes("z.object") ||
@@ -148,13 +136,51 @@ export async function fixSecurityRules(
         "  }\n" +
         "}\n";
 
-      if (
-        !content.includes("function validate(") &&
-        !content.includes("const validate =")
-      ) {
-        content = insertAfterImports(content, validateHelper);
-      }
+    if (
+      !content.includes("function validate(") &&
+      !content.includes("const validate =")
+    ) {
+      content = insertAfterImports(content, validateHelper);
+    }
 
+    const astIssues = inputValidationIssues.filter(i => i.startPos !== undefined && i.endPos !== undefined);
+    
+    if (astIssues.length > 0) {
+      astIssues.sort((a, b) => b.startPos! - a.startPos!);
+      for (const issue of astIssues) {
+        const nodeText = content.slice(issue.startPos!, issue.endPos!);
+        
+        const blockStartIndex = nodeText.indexOf("{");
+        if (blockStartIndex !== -1) {
+          const signature = nodeText.slice(0, blockStartIndex);
+          const paramsChunk = signature.split("(")[1]?.split(")")[0]?.trim() || "";
+          let paramName = "input";
+
+          if (paramsChunk.length > 0) {
+            const firstParam = paramsChunk.split(",")[0].trim();
+            const token = firstParam.split(":")[0].trim();
+            if (isIdentifierToken(token)) {
+              paramName = token;
+            }
+          }
+
+          const injection = `{\n  validate(${paramName});`;
+          const replacedText = nodeText.slice(0, blockStartIndex) + injection + nodeText.slice(blockStartIndex + 1);
+          
+          if (replacedText !== nodeText) {
+            content = content.slice(0, issue.startPos!) + replacedText + content.slice(issue.endPos!);
+            modified = true;
+            fixes.push({
+              file,
+              fixed: true,
+              ruleId: "security-input-validation",
+              message: "Added a basic input validation guard template.",
+            });
+          }
+        }
+      }
+    } else {
+      // Fallback line-by-line
       const lines = content.split("\n");
       let injectedValidation = false;
       for (let i = 0; i < lines.length; i++) {
@@ -185,70 +211,71 @@ export async function fixSecurityRules(
 
       if (injectedValidation) {
         content = lines.join("\n");
+        modified = true;
+        fixes.push({
+          file,
+          fixed: true,
+          ruleId: "security-input-validation",
+          message: "Added a basic input validation guard template.",
+        });
       }
-
-      modified = true;
-      fixes.push({
-        file,
-        fixed: true,
-        ruleId: "security-input-validation",
-        message: "Added a basic input validation guard template.",
-      });
+    }
     }
   }
 
-  const loweredContent = content.toLowerCase();
-  const hasApprovalTerms =
-    loweredContent.includes("confirm") || loweredContent.includes("approve");
-
-  if (hasDestructiveAction && !hasApprovalTerms) {
-    if (!/function\s+requireApproval\s*\(/.test(content)) {
-      content = insertAfterImports(
-        content,
-        "function requireApproval(): void {\n" +
-          "  const approved = false;\n" +
-          "  if (!approved) {\n" +
-          "    throw new Error('Operation requires explicit approval');\n" +
-          "  }\n" +
-          "}\n",
-      );
-      modified = true;
-      fixes.push({
-        file,
-        fixed: true,
-        ruleId: "security-destructive-action",
-        message: "Injected explicit approval guard template.",
-      });
-    }
-
-    const lines = content.split("\n");
-    let hasLineChanges = false;
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const trimmed = line.trim();
-      const hasMutationCall =
-        (line.includes("fs.writeFileSync") ||
-          line.includes("child_process.exec")) &&
-        line.includes("(");
-      if (
-        hasMutationCall &&
-        !trimmed.startsWith("//") &&
-        !trimmed.startsWith("requireApproval();")
-      ) {
-        const indent = line.match(/^\s*/)?.[0] || "";
-        lines[i] = `${indent}requireApproval();\n${line}`;
-        hasLineChanges = true;
+  if (destructiveActionIssues.length > 0) {
+    const loweredContent = content.toLowerCase();
+    const hasApprovalTerms = loweredContent.includes("confirm") || loweredContent.includes("approve");
+    
+    if (!hasApprovalTerms) {
+      if (!/function\s+requireApproval\s*\(/.test(content)) {
+        content = insertAfterImports(
+          content,
+          "function requireApproval(): void {\n" +
+            "  const approved = false;\n" +
+            "  if (!approved) {\n" +
+            "    throw new Error('Operation requires explicit approval');\n" +
+            "  }\n" +
+            "}\n",
+        );
+        modified = true;
         fixes.push({
           file,
           fixed: true,
           ruleId: "security-destructive-action",
-          message: `Added approval guard before mutating call on line ${i + 1}.`,
+          message: "Injected explicit approval guard template.",
         });
       }
-    }
-    if (hasLineChanges) {
-      content = lines.join("\n");
-      modified = true;
+
+      const lines = content.split("\n");
+      let hasLineChanges = false;
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const trimmed = line.trim();
+        const hasMutationCall =
+          (line.includes("fs.writeFileSync") ||
+            line.includes("child_process.exec")) &&
+          line.includes("(");
+        if (
+          hasMutationCall &&
+          !trimmed.startsWith("//") &&
+          !trimmed.startsWith("requireApproval();")
+        ) {
+          const indent = line.match(/^\s*/)?.[0] || "";
+          lines[i] = `${indent}requireApproval();\n${line}`;
+          hasLineChanges = true;
+          fixes.push({
+            file,
+            fixed: true,
+            ruleId: "security-destructive-action",
+            message: `Added approval guard before mutating call on line ${i + 1}.`,
+          });
+        }
+      }
+      if (hasLineChanges) {
+        content = lines.join("\n");
+        modified = true;
+      }
     }
   }
 

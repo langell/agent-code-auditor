@@ -15,4 +15,12 @@ export interface AgentIssue {
     | "Verification/Security"
     | "Code Quality"
     | "General";
+  startPos?: number;
+  endPos?: number;
+}
+
+export interface ToolDeclaration {
+  name: string;
+  file: string;
+  line: number;
 }
