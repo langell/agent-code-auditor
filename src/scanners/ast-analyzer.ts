@@ -101,14 +101,26 @@ export async function runASTAnalyzer(
     const lines = content.split("\n");
 
     let sourceFile: ts.SourceFile | undefined;
-    if (file.endsWith(".ts") || file.endsWith(".tsx") || file.endsWith(".js") || file.endsWith(".jsx")) {
-      sourceFile = ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true);
+    if (
+      file.endsWith(".ts") ||
+      file.endsWith(".tsx") ||
+      file.endsWith(".js") ||
+      file.endsWith(".jsx")
+    ) {
+      sourceFile = ts.createSourceFile(
+        file,
+        content,
+        ts.ScriptTarget.Latest,
+        true,
+      );
     }
 
     // Run modular rules
     issues.push(...checkSpecRules(file, lines, config, sourceFile));
     issues.push(...checkContextRules(file, lines, config, sourceFile));
-    issues.push(...checkToolRules(file, lines, config, sourceFile, globalTools));
+    issues.push(
+      ...checkToolRules(file, lines, config, sourceFile, globalTools),
+    );
     issues.push(...checkExecutionRules(file, lines, config, sourceFile));
     issues.push(...checkSecurityRules(file, lines, config, sourceFile));
     issues.push(...checkCodeQualityRules(file, lines, config, sourceFile));
@@ -175,7 +187,8 @@ export async function runASTAnalyzer(
           message: `Tool '${tool.name}' overlaps with a tool defined in ${seenTools.get(tool.name)}.`,
           ruleId: "tool-overlapping",
           severity: config.rules["tool-overlapping"] || "error",
-          suggestion: "Ensure each tool has a distinct name and purpose across the workspace.",
+          suggestion:
+            "Ensure each tool has a distinct name and purpose across the workspace.",
           category: "Tool",
         });
       } else {

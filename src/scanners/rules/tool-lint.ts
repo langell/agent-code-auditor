@@ -20,9 +20,17 @@ export function checkToolRules(
         let toolName = "";
 
         for (const prop of node.properties) {
-          if (ts.isPropertyAssignment(prop) && prop.name && ts.isIdentifier(prop.name)) {
+          if (
+            ts.isPropertyAssignment(prop) &&
+            prop.name &&
+            ts.isIdentifier(prop.name)
+          ) {
             const propName = prop.name.text;
-            if (propName === "type" && ts.isStringLiteral(prop.initializer) && prop.initializer.text === "object") {
+            if (
+              propName === "type" &&
+              ts.isStringLiteral(prop.initializer) &&
+              prop.initializer.text === "object"
+            ) {
               hasTypeObject = true;
             }
             if (propName === "description") {
@@ -39,14 +47,17 @@ export function checkToolRules(
 
         if (hasTypeObject) {
           if (config.rules["tool-weak-schema"] !== "off" && !hasDescription) {
-            const { line } = sourceFile!.getLineAndCharacterOfPosition(node.getStart());
+            const { line } = sourceFile!.getLineAndCharacterOfPosition(
+              node.getStart(),
+            );
             issues.push({
               file,
               line: line + 1,
               message: "Tool parameter object missing descriptions.",
               ruleId: "tool-weak-schema",
               severity: config.rules["tool-weak-schema"] || "error",
-              suggestion: "Add detailed descriptions to tool properties to guide the agent.",
+              suggestion:
+                "Add detailed descriptions to tool properties to guide the agent.",
               category: "Tool",
               startPos: node.getStart(),
               endPos: node.getEnd(),
@@ -54,14 +65,17 @@ export function checkToolRules(
           }
 
           if (config.rules["tool-missing-examples"] !== "off" && !hasExamples) {
-            const { line } = sourceFile!.getLineAndCharacterOfPosition(node.getStart());
+            const { line } = sourceFile!.getLineAndCharacterOfPosition(
+              node.getStart(),
+            );
             issues.push({
               file,
               line: line + 1,
               message: "Tool object missing examples.",
               ruleId: "tool-missing-examples",
               severity: config.rules["tool-missing-examples"] || "warn",
-              suggestion: "Provide examples of valid and invalid tool calls to improve agent reliability.",
+              suggestion:
+                "Provide examples of valid and invalid tool calls to improve agent reliability.",
               category: "Tool",
               startPos: node.getStart(),
               endPos: node.getEnd(),
@@ -70,7 +84,9 @@ export function checkToolRules(
         }
 
         if (toolName && globalTools && (hasDescription || hasTypeObject)) {
-          const { line } = sourceFile!.getLineAndCharacterOfPosition(node.getStart());
+          const { line } = sourceFile!.getLineAndCharacterOfPosition(
+            node.getStart(),
+          );
           globalTools.push({
             name: toolName,
             file,
@@ -99,7 +115,8 @@ export function checkToolRules(
             message: "Tool parameter object missing descriptions.",
             ruleId: "tool-weak-schema",
             severity: config.rules["tool-weak-schema"] || "error",
-            suggestion: "Add detailed descriptions to tool properties to guide the agent.",
+            suggestion:
+              "Add detailed descriptions to tool properties to guide the agent.",
             category: "Tool",
           });
         }
@@ -118,7 +135,8 @@ export function checkToolRules(
             message: "Tool object missing examples.",
             ruleId: "tool-missing-examples",
             severity: config.rules["tool-missing-examples"] || "warn",
-            suggestion: "Provide examples of valid and invalid tool calls to improve agent reliability.",
+            suggestion:
+              "Provide examples of valid and invalid tool calls to improve agent reliability.",
             category: "Tool",
           });
         }
@@ -149,8 +167,10 @@ export function checkToolRules(
         line: 1,
         message: "Multiple tools with identical or overlapping names detected.",
         ruleId: "tool-overlapping",
-        severity: config.rules["tool-overlapping"] === "warn" ? "warn" : "error",
-        suggestion: "Ensure each tool has a distinct name and purpose to avoid ambiguous decision points.",
+        severity:
+          config.rules["tool-overlapping"] === "warn" ? "warn" : "error",
+        suggestion:
+          "Ensure each tool has a distinct name and purpose to avoid ambiguous decision points.",
         category: "Tool",
       });
     }

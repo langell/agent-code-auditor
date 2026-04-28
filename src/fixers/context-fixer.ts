@@ -18,21 +18,29 @@ export async function fixContextRules(
     let content = fs.readFileSync(file, "utf8");
     let modified = false;
 
-    const astIssues = contextIssues.filter(i => i.startPos !== undefined && i.endPos !== undefined);
+    const astIssues = contextIssues.filter(
+      (i) => i.startPos !== undefined && i.endPos !== undefined,
+    );
 
     if (astIssues.length > 0) {
       astIssues.sort((a, b) => b.startPos! - a.startPos!);
       for (const issue of astIssues) {
         const nodeText = content.slice(issue.startPos!, issue.endPos!);
-        
+
         // Find the first `{` inside the Agent initialization
         const blockStartIndex = nodeText.indexOf("{");
         if (blockStartIndex !== -1) {
           const injection = `{ traceId: "TODO: inject-trace-id", `;
-          const replacedText = nodeText.slice(0, blockStartIndex) + injection + nodeText.slice(blockStartIndex + 1);
-          
+          const replacedText =
+            nodeText.slice(0, blockStartIndex) +
+            injection +
+            nodeText.slice(blockStartIndex + 1);
+
           if (replacedText !== nodeText) {
-            content = content.slice(0, issue.startPos!) + replacedText + content.slice(issue.endPos!);
+            content =
+              content.slice(0, issue.startPos!) +
+              replacedText +
+              content.slice(issue.endPos!);
             modified = true;
             fixes.push({
               file,
@@ -46,9 +54,15 @@ export async function fixContextRules(
           const parenIndex = nodeText.indexOf("(");
           if (parenIndex !== -1) {
             const injection = `({ traceId: "TODO: inject-trace-id" }`;
-            const replacedText = nodeText.slice(0, parenIndex) + injection + nodeText.slice(parenIndex + 1);
+            const replacedText =
+              nodeText.slice(0, parenIndex) +
+              injection +
+              nodeText.slice(parenIndex + 1);
             if (replacedText !== nodeText) {
-              content = content.slice(0, issue.startPos!) + replacedText + content.slice(issue.endPos!);
+              content =
+                content.slice(0, issue.startPos!) +
+                replacedText +
+                content.slice(issue.endPos!);
               modified = true;
               fixes.push({
                 file,

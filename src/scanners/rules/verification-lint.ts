@@ -10,7 +10,7 @@ export function checkVerificationRules(
   lines: string[],
   config: AgentLintConfig,
   dir: string,
-  sourceFile?: ts.SourceFile,
+  _sourceFile?: ts.SourceFile,
 ): AgentIssue[] {
   const issues: AgentIssue[] = [];
 
@@ -44,7 +44,10 @@ export function checkVerificationRules(
             line: 1,
             message: `Missing corresponding test file for business logic module.`,
             ruleId: "verification-missing-tests",
-            severity: config.rules["verification-missing-tests"] === "warn" ? "warn" : "error",
+            severity:
+              config.rules["verification-missing-tests"] === "warn"
+                ? "warn"
+                : "error",
             suggestion:
               "Every core business logic file MUST include a corresponding test file.",
             category: "Verification/Security",

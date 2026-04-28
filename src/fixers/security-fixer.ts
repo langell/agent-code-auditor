@@ -47,10 +47,18 @@ export async function fixSecurityRules(
   const fixes: FixResult[] = [];
   if (!fs.existsSync(file)) return fixes;
 
-  const ignoreIssues = issues.filter(i => i.ruleId === "security-ignore-instructions");
-  const insecureRenders = issues.filter(i => i.ruleId === "no-insecure-renders");
-  const inputValidationIssues = issues.filter(i => i.ruleId === "security-input-validation");
-  const destructiveActionIssues = issues.filter(i => i.ruleId === "security-destructive-action");
+  const ignoreIssues = issues.filter(
+    (i) => i.ruleId === "security-ignore-instructions",
+  );
+  const insecureRenders = issues.filter(
+    (i) => i.ruleId === "no-insecure-renders",
+  );
+  const inputValidationIssues = issues.filter(
+    (i) => i.ruleId === "security-input-validation",
+  );
+  const destructiveActionIssues = issues.filter(
+    (i) => i.ruleId === "security-destructive-action",
+  );
 
   if (
     ignoreIssues.length === 0 &&
@@ -136,97 +144,107 @@ export async function fixSecurityRules(
         "  }\n" +
         "}\n";
 
-    if (
-      !content.includes("function validate(") &&
-      !content.includes("const validate =")
-    ) {
-      content = insertAfterImports(content, validateHelper);
-    }
+      if (
+        !content.includes("function validate(") &&
+        !content.includes("const validate =")
+      ) {
+        content = insertAfterImports(content, validateHelper);
+      }
 
-    const astIssues = inputValidationIssues.filter(i => i.startPos !== undefined && i.endPos !== undefined);
-    
-    if (astIssues.length > 0) {
-      astIssues.sort((a, b) => b.startPos! - a.startPos!);
-      for (const issue of astIssues) {
-        const nodeText = content.slice(issue.startPos!, issue.endPos!);
-        
-        const blockStartIndex = nodeText.indexOf("{");
-        if (blockStartIndex !== -1) {
-          const signature = nodeText.slice(0, blockStartIndex);
-          const paramsChunk = signature.split("(")[1]?.split(")")[0]?.trim() || "";
-          let paramName = "input";
+      const astIssues = inputValidationIssues.filter(
+        (i) => i.startPos !== undefined && i.endPos !== undefined,
+      );
 
-          if (paramsChunk.length > 0) {
-            const firstParam = paramsChunk.split(",")[0].trim();
-            const token = firstParam.split(":")[0].trim();
-            if (isIdentifierToken(token)) {
-              paramName = token;
+      if (astIssues.length > 0) {
+        astIssues.sort((a, b) => b.startPos! - a.startPos!);
+        for (const issue of astIssues) {
+          const nodeText = content.slice(issue.startPos!, issue.endPos!);
+
+          const blockStartIndex = nodeText.indexOf("{");
+          if (blockStartIndex !== -1) {
+            const signature = nodeText.slice(0, blockStartIndex);
+            const paramsChunk =
+              signature.split("(")[1]?.split(")")[0]?.trim() || "";
+            let paramName = "input";
+
+            if (paramsChunk.length > 0) {
+              const firstParam = paramsChunk.split(",")[0].trim();
+              const token = firstParam.split(":")[0].trim();
+              if (isIdentifierToken(token)) {
+                paramName = token;
+              }
+            }
+
+            const injection = `{\n  validate(${paramName});`;
+            const replacedText =
+              nodeText.slice(0, blockStartIndex) +
+              injection +
+              nodeText.slice(blockStartIndex + 1);
+
+            if (replacedText !== nodeText) {
+              content =
+                content.slice(0, issue.startPos!) +
+                replacedText +
+                content.slice(issue.endPos!);
+              modified = true;
+              fixes.push({
+                file,
+                fixed: true,
+                ruleId: "security-input-validation",
+                message: "Added a basic input validation guard template.",
+              });
             }
           }
-
-          const injection = `{\n  validate(${paramName});`;
-          const replacedText = nodeText.slice(0, blockStartIndex) + injection + nodeText.slice(blockStartIndex + 1);
-          
-          if (replacedText !== nodeText) {
-            content = content.slice(0, issue.startPos!) + replacedText + content.slice(issue.endPos!);
-            modified = true;
-            fixes.push({
-              file,
-              fixed: true,
-              ruleId: "security-input-validation",
-              message: "Added a basic input validation guard template.",
-            });
-          }
         }
-      }
-    } else {
-      // Fallback line-by-line
-      const lines = content.split("\n");
-      let injectedValidation = false;
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (
-          (line.startsWith("export async function ") ||
-            line.startsWith("export function ")) &&
-          line.includes("(") &&
-          line.includes(")") &&
-          line.endsWith("{")
-        ) {
-          const paramsChunk = line.split("(")[1]?.split(")")[0]?.trim() || "";
-          let paramName = "input";
+      } else {
+        // Fallback line-by-line
+        const lines = content.split("\n");
+        let injectedValidation = false;
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (
+            (line.startsWith("export async function ") ||
+              line.startsWith("export function ")) &&
+            line.includes("(") &&
+            line.includes(")") &&
+            line.endsWith("{")
+          ) {
+            const paramsChunk = line.split("(")[1]?.split(")")[0]?.trim() || "";
+            let paramName = "input";
 
-          if (paramsChunk.length > 0) {
-            const firstParam = paramsChunk.split(",")[0].trim();
-            const token = firstParam.split(":")[0].trim();
-            if (isIdentifierToken(token)) {
-              paramName = token;
+            if (paramsChunk.length > 0) {
+              const firstParam = paramsChunk.split(",")[0].trim();
+              const token = firstParam.split(":")[0].trim();
+              if (isIdentifierToken(token)) {
+                paramName = token;
+              }
             }
-          }
 
-          lines.splice(i + 1, 0, `  validate(${paramName});`);
-          injectedValidation = true;
-          break;
+            lines.splice(i + 1, 0, `  validate(${paramName});`);
+            injectedValidation = true;
+            break;
+          }
+        }
+
+        if (injectedValidation) {
+          content = lines.join("\n");
+          modified = true;
+          fixes.push({
+            file,
+            fixed: true,
+            ruleId: "security-input-validation",
+            message: "Added a basic input validation guard template.",
+          });
         }
       }
-
-      if (injectedValidation) {
-        content = lines.join("\n");
-        modified = true;
-        fixes.push({
-          file,
-          fixed: true,
-          ruleId: "security-input-validation",
-          message: "Added a basic input validation guard template.",
-        });
-      }
-    }
     }
   }
 
   if (destructiveActionIssues.length > 0) {
     const loweredContent = content.toLowerCase();
-    const hasApprovalTerms = loweredContent.includes("confirm") || loweredContent.includes("approve");
-    
+    const hasApprovalTerms =
+      loweredContent.includes("confirm") || loweredContent.includes("approve");
+
     if (!hasApprovalTerms) {
       if (!/function\s+requireApproval\s*\(/.test(content)) {
         content = insertAfterImports(

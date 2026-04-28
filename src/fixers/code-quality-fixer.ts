@@ -17,14 +17,19 @@ export async function fixCodeQualityRules(
     let modified = false;
 
     // Sort issues by startPos descending to apply replacements without offset shifting
-    const astIssues = cqIssues.filter(i => i.startPos !== undefined && i.endPos !== undefined);
-    const lineIssues = cqIssues.filter(i => i.startPos === undefined);
+    const astIssues = cqIssues.filter(
+      (i) => i.startPos !== undefined && i.endPos !== undefined,
+    );
+    const lineIssues = cqIssues.filter((i) => i.startPos === undefined);
 
     if (astIssues.length > 0) {
       astIssues.sort((a, b) => b.startPos! - a.startPos!);
       for (const issue of astIssues) {
         // any keyword text is "any"
-        content = content.slice(0, issue.startPos!) + "unknown" + content.slice(issue.endPos!);
+        content =
+          content.slice(0, issue.startPos!) +
+          "unknown" +
+          content.slice(issue.endPos!);
         modified = true;
         fixes.push({
           file,

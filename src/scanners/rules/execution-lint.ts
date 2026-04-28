@@ -11,14 +11,14 @@ export function checkExecutionRules(
   const issues: AgentIssue[] = [];
 
   let hasWhileTrue = false;
-  let hasMaxSteps = false;
   let mutations = 0;
   let hasTransaction = false;
   let hasMutatingCall = false;
   const whileTrueNodes: ts.Node[] = [];
 
   const content = sourceFile ? sourceFile.text : lines.join("\n");
-  hasMaxSteps = content.includes("maxSteps") || content.includes("maxIterations");
+  const hasMaxSteps =
+    content.includes("maxSteps") || content.includes("maxIterations");
 
   if (sourceFile) {
     function visit(node: ts.Node) {
@@ -33,7 +33,7 @@ export function checkExecutionRules(
       if (node.kind === ts.SyntaxKind.CallExpression) {
         const callExpr = node as ts.CallExpression;
         const exprText = callExpr.expression.getText(sourceFile);
-        
+
         if (
           exprText === "db.insert" ||
           exprText === "db.update" ||

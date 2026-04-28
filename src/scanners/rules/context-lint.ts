@@ -19,14 +19,18 @@ export function checkContextRules(
           node.kind === ts.SyntaxKind.TemplateExpression
         ) {
           if (node.getText(sourceFile).length > 5000) {
-            const { line } = sourceFile!.getLineAndCharacterOfPosition(node.getStart());
+            const { line } = sourceFile!.getLineAndCharacterOfPosition(
+              node.getStart(),
+            );
             issues.push({
               file,
               line: line + 1,
-              message: "Oversized hardcoded context or noisy string block detected.",
+              message:
+                "Oversized hardcoded context or noisy string block detected.",
               ruleId: "context-oversized",
               severity: config.rules["context-oversized"] || "warn",
-              suggestion: "Extract large context blocks to separate documents and ensure relevance via RAG or strict filtering.",
+              suggestion:
+                "Extract large context blocks to separate documents and ensure relevance via RAG or strict filtering.",
               category: "Context",
               startPos: node.getStart(),
               endPos: node.getEnd(),
@@ -37,7 +41,7 @@ export function checkContextRules(
 
       if (config.rules["observability-missing-trace-id"] !== "off") {
         let isAgentInit = false;
-        
+
         if (node.kind === ts.SyntaxKind.NewExpression) {
           const expr = node as ts.NewExpression;
           if (expr.expression.getText(sourceFile) === "Agent") {
@@ -53,14 +57,19 @@ export function checkContextRules(
         if (isAgentInit) {
           const initText = node.getText(sourceFile);
           if (!/traceId|runId|sessionId|correlationId/i.test(initText)) {
-            const { line } = sourceFile!.getLineAndCharacterOfPosition(node.getStart());
+            const { line } = sourceFile!.getLineAndCharacterOfPosition(
+              node.getStart(),
+            );
             issues.push({
               file,
               line: line + 1,
-              message: "Agent initialization found without an explicit Trace ID or Run ID.",
+              message:
+                "Agent initialization found without an explicit Trace ID or Run ID.",
               ruleId: "observability-missing-trace-id",
-              severity: config.rules["observability-missing-trace-id"] || "warn",
-              suggestion: "Ensure a traceId or runId is passed into the agent context for observability and debugging.",
+              severity:
+                config.rules["observability-missing-trace-id"] || "warn",
+              suggestion:
+                "Ensure a traceId or runId is passed into the agent context for observability and debugging.",
               category: "Context",
               startPos: node.getStart(),
               endPos: node.getEnd(),
@@ -84,7 +93,8 @@ export function checkContextRules(
           issues.push({
             file,
             line: i + 1,
-            message: "Oversized hardcoded context or noisy string block detected.",
+            message:
+              "Oversized hardcoded context or noisy string block detected.",
             ruleId: "context-oversized",
             severity: config.rules["context-oversized"] || "warn",
             suggestion:

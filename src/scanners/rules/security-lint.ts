@@ -13,15 +13,20 @@ export function checkSecurityRules(
 
   // 3. Destructive Action (Global Check)
   if (config.rules["security-destructive-action"] !== "off") {
-    if (content.includes("fs.writeFileSync") || content.includes("child_process.exec")) {
+    if (
+      content.includes("fs.writeFileSync") ||
+      content.includes("child_process.exec")
+    ) {
       if (!content.includes("confirm") && !content.includes("approve")) {
         issues.push({
           file,
           line: 1,
-          message: "Destructive action (file write/shell exec) without confirmation step.",
+          message:
+            "Destructive action (file write/shell exec) without confirmation step.",
           ruleId: "security-destructive-action",
           severity: config.rules["security-destructive-action"] || "error",
-          suggestion: "Require a human approval step or explicit boundaries before executing mutating commands.",
+          suggestion:
+            "Require a human approval step or explicit boundaries before executing mutating commands.",
           category: "Execution Safety",
         });
       }
@@ -33,12 +38,18 @@ export function checkSecurityRules(
     if (file.includes("/api/") || file.includes("/actions/")) {
       let missingValidation = false;
       let issueNode: ts.Node | undefined;
-      
+
       if (sourceFile) {
         function visit(node: ts.Node) {
           if (
-            (ts.isFunctionDeclaration(node) && node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) ||
-            (ts.isVariableStatement(node) && node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword))
+            (ts.isFunctionDeclaration(node) &&
+              node.modifiers?.some(
+                (m) => m.kind === ts.SyntaxKind.ExportKeyword,
+              )) ||
+            (ts.isVariableStatement(node) &&
+              node.modifiers?.some(
+                (m) => m.kind === ts.SyntaxKind.ExportKeyword,
+              ))
           ) {
             const funcText = node.getText(sourceFile);
             // Ignore non-functions in exported variables roughly
@@ -57,22 +68,34 @@ export function checkSecurityRules(
         }
         visit(sourceFile);
       } else {
-        if (content.includes("export async function") || content.includes("export function")) {
-          if (!content.includes(".parse(") && !content.includes("z.object") && !content.includes("validate(")) {
+        if (
+          content.includes("export async function") ||
+          content.includes("export function")
+        ) {
+          if (
+            !content.includes(".parse(") &&
+            !content.includes("z.object") &&
+            !content.includes("validate(")
+          ) {
             missingValidation = true;
           }
         }
       }
 
       if (missingValidation) {
-        const line = issueNode ? sourceFile!.getLineAndCharacterOfPosition(issueNode.getStart()).line + 1 : 1;
+        const line = issueNode
+          ? sourceFile!.getLineAndCharacterOfPosition(issueNode.getStart())
+              .line + 1
+          : 1;
         issues.push({
           file,
           line,
-          message: "API route or Server Action appears to be missing input validation.",
+          message:
+            "API route or Server Action appears to be missing input validation.",
           ruleId: "security-input-validation",
           severity: config.rules["security-input-validation"] || "error",
-          suggestion: "Sanitize and validate all user inputs before processing. Use a schema validation library like Zod.",
+          suggestion:
+            "Sanitize and validate all user inputs before processing. Use a schema validation library like Zod.",
           category: "Security",
           startPos: issueNode?.getStart(),
           endPos: issueNode?.getEnd(),
@@ -98,7 +121,8 @@ export function checkSecurityRules(
           message: "Potential secret/API key exposed in code or config.",
           ruleId: "security-secret-leakage",
           severity: config.rules["security-secret-leakage"] || "error",
-          suggestion: "Remove hardcoded secrets and use environment variables or a secret manager.",
+          suggestion:
+            "Remove hardcoded secrets and use environment variables or a secret manager.",
           category: "Security",
         });
       }
@@ -115,10 +139,12 @@ export function checkSecurityRules(
         issues.push({
           file,
           line: i + 1,
-          message: "Potential prompt injection: unsanitized output used in prompt or execution.",
+          message:
+            "Potential prompt injection: unsanitized output used in prompt or execution.",
           ruleId: "security-prompt-injection",
           severity: config.rules["security-prompt-injection"] || "error",
-          suggestion: "Implement strict boundaries between tool outputs and prompt instructions. Sanitize outputs.",
+          suggestion:
+            "Implement strict boundaries between tool outputs and prompt instructions. Sanitize outputs.",
           category: "Security",
         });
       }
@@ -138,7 +164,8 @@ export function checkSecurityRules(
           message: "Potential unredacted user data being processed.",
           ruleId: "context-unredacted-pii",
           severity: config.rules["context-unredacted-pii"] || "error",
-          suggestion: "Ensure user records or PII are redacted or minimized before passing to an agent context.",
+          suggestion:
+            "Ensure user records or PII are redacted or minimized before passing to an agent context.",
           category: "Security",
         });
       }

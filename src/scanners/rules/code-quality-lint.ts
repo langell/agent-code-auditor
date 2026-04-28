@@ -22,7 +22,8 @@ export function checkCodeQualityRules(
             line: line + 1,
             message: "Use of 'any' type detected.",
             ruleId: "code-quality-no-any",
-            severity: config.rules["code-quality-no-any"] === "warn" ? "warn" : "error",
+            severity:
+              config.rules["code-quality-no-any"] === "warn" ? "warn" : "error",
             suggestion:
               "Zero 'any' types allowed. Define explicit interfaces or types to ensure type safety.",
             category: "Code Quality",
@@ -44,7 +45,10 @@ export function checkCodeQualityRules(
               line: i + 1,
               message: "Use of 'any' type detected.",
               ruleId: "code-quality-no-any",
-              severity: config.rules["code-quality-no-any"] === "warn" ? "warn" : "error",
+              severity:
+                config.rules["code-quality-no-any"] === "warn"
+                  ? "warn"
+                  : "error",
               suggestion:
                 "Zero 'any' types allowed. Define explicit interfaces or types to ensure type safety.",
               category: "Code Quality",

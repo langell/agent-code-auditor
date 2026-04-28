@@ -50,19 +50,27 @@ export async function fixExecutionRules(
     }
     const replacement = `for (let ${loopVar} = 0; ${loopVar} < ${DEFAULT_MAX_STEPS}; ${loopVar}++)`;
 
-    const astIssues = maxStepIssues.filter((i) => i.startPos !== undefined && i.endPos !== undefined);
-    
+    const astIssues = maxStepIssues.filter(
+      (i) => i.startPos !== undefined && i.endPos !== undefined,
+    );
+
     if (astIssues.length > 0) {
       astIssues.sort((a, b) => b.startPos! - a.startPos!);
       for (const issue of astIssues) {
-        // the node is the whole WhileStatement. 
+        // the node is the whole WhileStatement.
         // We only want to replace the `while (...)` part, which is from getStart() to the closing parenthesis before the body.
         // Actually, matching `while\\s*\\(\\s*true\\s*\\)` inside the node string is safer.
         const nodeText = content.slice(issue.startPos!, issue.endPos!);
-        const replacedText = nodeText.replace(/while\s*\(\s*true\s*\)/, replacement);
-        
+        const replacedText = nodeText.replace(
+          /while\s*\(\s*true\s*\)/,
+          replacement,
+        );
+
         if (replacedText !== nodeText) {
-          content = content.slice(0, issue.startPos!) + replacedText + content.slice(issue.endPos!);
+          content =
+            content.slice(0, issue.startPos!) +
+            replacedText +
+            content.slice(issue.endPos!);
           fixes.push({
             file,
             fixed: true,
