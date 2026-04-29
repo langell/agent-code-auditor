@@ -73,7 +73,7 @@ test("security-lint AST flags missing input validation in api files", () => {
     "}",
   ].join("\n");
 
-  const file = "src/api/handler.ts";
+  const file = "src/app/api/handler/route.ts";
   const sourceFile = ts.createSourceFile(
     file,
     content,
@@ -92,6 +92,7 @@ test("security-lint AST flags missing input validation in api files", () => {
 test("security-lint non-AST flags missing input validation in actions files", () => {
   const config = loadConfig(".");
   const content = [
+    "'use server';",
     "export async function action(input) {",
     "  return input;",
     "}",
@@ -117,7 +118,7 @@ test("security-lint AST allows validated api functions", () => {
     "}",
   ].join("\n");
 
-  const file = "src/api/safe.ts";
+  const file = "src/app/api/safe/route.ts";
   const sourceFile = ts.createSourceFile(
     file,
     content,
@@ -311,10 +312,9 @@ test("fixContextRules injects traceId via AST positions with empty Agent()", asy
 
 test("fixSecurityRules adds validate() guard via AST positions for api files", async () => {
   const tempDir = makeTempDir("agentlint-sec-input-ast-");
-  const srcDir = path.join(tempDir, "src");
-  const apiDir = path.join(srcDir, "api");
+  const apiDir = path.join(tempDir, "src", "app", "api", "handler");
   fs.mkdirSync(apiDir, { recursive: true });
-  const filePath = path.join(apiDir, "handler.ts");
+  const filePath = path.join(apiDir, "route.ts");
   const original = [
     "export async function handler(req) {",
     "  return { ok: true };",

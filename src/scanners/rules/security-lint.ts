@@ -2,6 +2,67 @@ import * as ts from "typescript";
 import { AgentLintConfig } from "../../config.js";
 import { AgentIssue } from "../types.js";
 
+const NEXT_ROUTE_HANDLER_REGEX =
+  /\/app\/(?:[^/]+\/)*route\.(?:ts|tsx|js|jsx)$/;
+const NEXT_PAGES_API_REGEX = /\/pages\/api\/[^]*\.(?:ts|tsx|js|jsx)$/;
+const EXPRESS_ROUTES_DIR_REGEX = /\/routes\//;
+
+const VALIDATION_REGEX =
+  /\bz\.[a-zA-Z]+\s*\(|\.(?:parse|safeParse|parseAsync|validate|validateSync)\s*\(|\bvalidator\b|\bvalidate[A-Z][A-Za-z]*\s*\(|\bvalidate\s*\(/;
+
+function hasUseServerDirective(content: string): boolean {
+  const head = content.split("\n").slice(0, 6).join("\n");
+  return /^\s*['"]use server['"];?\s*$/m.test(head);
+}
+
+function isRouteHandlerFile(file: string, content: string): boolean {
+  const norm = file.replace(/\\/g, "/");
+  if (NEXT_ROUTE_HANDLER_REGEX.test(norm)) return true;
+  if (NEXT_PAGES_API_REGEX.test(norm)) return true;
+  if (EXPRESS_ROUTES_DIR_REGEX.test(norm)) return true;
+  if (hasUseServerDirective(content)) return true;
+  return false;
+}
+
+function looksValidated(text: string): boolean {
+  return VALIDATION_REGEX.test(text);
+}
+
+function isExportedFunctionLike(node: ts.Node): boolean {
+  if (
+    ts.isFunctionDeclaration(node) &&
+    node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
+  ) {
+    return true;
+  }
+  if (
+    ts.isVariableStatement(node) &&
+    node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function hasParameters(node: ts.Node): boolean {
+  if (ts.isFunctionDeclaration(node)) {
+    return node.parameters.length > 0;
+  }
+  if (ts.isVariableStatement(node)) {
+    for (const decl of node.declarationList.declarations) {
+      const init = decl.initializer;
+      if (
+        init &&
+        (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) &&
+        init.parameters.length > 0
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function checkSecurityRules(
   file: string,
   lines: string[],
@@ -35,33 +96,20 @@ export function checkSecurityRules(
 
   // 4. Missing Input Validation (Server Actions / APIs)
   if (config.rules["security-input-validation"] !== "off") {
-    if (file.includes("/api/") || file.includes("/actions/")) {
+    if (isRouteHandlerFile(file, content)) {
       let missingValidation = false;
       let issueNode: ts.Node | undefined;
 
       if (sourceFile) {
         function visit(node: ts.Node) {
-          if (
-            (ts.isFunctionDeclaration(node) &&
-              node.modifiers?.some(
-                (m) => m.kind === ts.SyntaxKind.ExportKeyword,
-              )) ||
-            (ts.isVariableStatement(node) &&
-              node.modifiers?.some(
-                (m) => m.kind === ts.SyntaxKind.ExportKeyword,
-              ))
-          ) {
+          if (isExportedFunctionLike(node) && hasParameters(node)) {
             const funcText = node.getText(sourceFile);
-            // Ignore non-functions in exported variables roughly
-            if (funcText.includes("function") || funcText.includes("=>")) {
-              if (
-                !funcText.includes(".parse(") &&
-                !funcText.includes("z.object") &&
-                !funcText.includes("validate(")
-              ) {
-                missingValidation = true;
-                issueNode = node;
-              }
+            if (
+              (funcText.includes("function") || funcText.includes("=>")) &&
+              !looksValidated(funcText)
+            ) {
+              missingValidation = true;
+              issueNode = node;
             }
           }
           ts.forEachChild(node, visit);
@@ -69,16 +117,12 @@ export function checkSecurityRules(
         visit(sourceFile);
       } else {
         if (
-          content.includes("export async function") ||
-          content.includes("export function")
+          (content.includes("export async function") ||
+            content.includes("export function")) &&
+          /export\s+(?:async\s+)?function\s+\w+\s*\([^)]+\)/.test(content) &&
+          !looksValidated(content)
         ) {
-          if (
-            !content.includes(".parse(") &&
-            !content.includes("z.object") &&
-            !content.includes("validate(")
-          ) {
-            missingValidation = true;
-          }
+          missingValidation = true;
         }
       }
 
