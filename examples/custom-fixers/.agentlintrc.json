@@ -1,0 +1,5 @@
+{
+  "fixers": {
+    "security-secret-leakage": "./secret-to-env-fixer.mjs#SecretToEnvFixer"
+  }
+}
