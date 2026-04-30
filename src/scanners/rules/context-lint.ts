@@ -2,6 +2,60 @@ import * as ts from "typescript";
 import { AgentLintConfig } from "../../config.js";
 import { AgentIssue } from "../types.js";
 
+const AGENT_CTOR_NAME_REGEX = /(?:^|\.)(?:Agent|createAgent|AgentExecutor)$/;
+const AGENT_INIT_NAME_REGEX = /(?:^|\.)Agent\.init$/;
+const AGENT_SHAPE_PROPS = new Set([
+  "tools",
+  "model",
+  "instructions",
+  "systemPrompt",
+  "system_prompt",
+  "tasks",
+]);
+
+function objectHasAgentShape(obj: ts.ObjectLiteralExpression): boolean {
+  for (const prop of obj.properties) {
+    if (
+      ts.isPropertyAssignment(prop) &&
+      prop.name &&
+      ts.isIdentifier(prop.name) &&
+      AGENT_SHAPE_PROPS.has(prop.name.text)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function looksLikeLlmAgentInit(
+  node: ts.Node,
+  sourceFile: ts.SourceFile,
+): boolean {
+  let exprText: string;
+  let args: ts.NodeArray<ts.Expression> | undefined;
+
+  if (ts.isNewExpression(node)) {
+    exprText = node.expression.getText(sourceFile);
+    args = node.arguments;
+  } else if (ts.isCallExpression(node)) {
+    exprText = node.expression.getText(sourceFile);
+    args = node.arguments;
+  } else {
+    return false;
+  }
+
+  const nameMatch =
+    AGENT_CTOR_NAME_REGEX.test(exprText) ||
+    AGENT_INIT_NAME_REGEX.test(exprText);
+  if (!nameMatch) return false;
+
+  // Require an LLM-agent-shaped property so domain "Agent" classes don't trip the rule
+  if (!args || args.length === 0) return false;
+  const firstArg = args[0];
+  if (!ts.isObjectLiteralExpression(firstArg)) return false;
+  return objectHasAgentShape(firstArg);
+}
+
 export function checkContextRules(
   file: string,
   lines: string[],
@@ -40,19 +94,7 @@ export function checkContextRules(
       }
 
       if (config.rules["observability-missing-trace-id"] !== "off") {
-        let isAgentInit = false;
-
-        if (node.kind === ts.SyntaxKind.NewExpression) {
-          const expr = node as ts.NewExpression;
-          if (expr.expression.getText(sourceFile) === "Agent") {
-            isAgentInit = true;
-          }
-        } else if (node.kind === ts.SyntaxKind.CallExpression) {
-          const expr = node as ts.CallExpression;
-          if (expr.expression.getText(sourceFile) === "Agent.init") {
-            isAgentInit = true;
-          }
-        }
+        const isAgentInit = looksLikeLlmAgentInit(node, sourceFile!);
 
         if (isAgentInit) {
           const initText = node.getText(sourceFile);

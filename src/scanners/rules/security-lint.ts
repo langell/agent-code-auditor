@@ -1,6 +1,7 @@
 import * as ts from "typescript";
 import { AgentLintConfig } from "../../config.js";
 import { AgentIssue } from "../types.js";
+import { looksValidated } from "./validation-helpers.js";
 
 const ROUTE_FILE_EXT_REGEX = /\/route\.(?:ts|tsx|js|jsx)$/;
 const SOURCE_FILE_EXT_REGEX = /\.(?:ts|tsx|js|jsx)$/;
@@ -8,9 +9,6 @@ const PAGES_API_DIR_REGEX = /\/pages\/api\//;
 const APP_DIR_REGEX = /\/app\//;
 const EXPRESS_ROUTES_DIR_REGEX = /\/routes\//;
 const USE_SERVER_DIRECTIVE_REGEX = /^\s*['"]use server['"];?\s*$/m;
-
-const VALIDATION_REGEX =
-  /\bz\.[a-zA-Z]+\s*\(|\.(?:parse|safeParse|parseAsync|validate|validateSync)\s*\(|\bvalidator\b|\bvalidate[A-Z][A-Za-z]*\s*\(|\bvalidate\s*\(/;
 
 function hasUseServerDirective(content: string): boolean {
   const head = content.split("\n").slice(0, 6).join("\n");
@@ -29,10 +27,6 @@ function isRouteHandlerFile(file: string, content: string): boolean {
   // Next.js Server Actions
   if (hasUseServerDirective(content)) return true;
   return false;
-}
-
-function looksValidated(text: string): boolean {
-  return VALIDATION_REGEX.test(text);
 }
 
 function isExportedFunctionLike(node: ts.Node): boolean {

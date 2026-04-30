@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import { AgentIssue } from "../scanners/types.js";
+import { looksValidated } from "../scanners/rules/validation-helpers.js";
 import { FixResult } from "./types.js";
 
 function insertAfterImports(content: string, block: string): string {
@@ -131,12 +132,7 @@ export async function fixSecurityRules(
   }
 
   if (inputValidationIssues.length > 0) {
-    const alreadyValidated =
-      content.includes(".parse(") ||
-      content.includes("z.object") ||
-      content.includes("validate(");
-
-    if (!alreadyValidated) {
+    if (!looksValidated(content)) {
       const validateHelper =
         "function validate(input: unknown): void {\n" +
         "  if (input === null || input === undefined) {\n" +
@@ -274,13 +270,12 @@ export async function fixSecurityRules(
           (line.includes("fs.writeFileSync") ||
             line.includes("child_process.exec")) &&
           line.includes("(");
-        if (
-          hasMutationCall &&
-          !trimmed.startsWith("//") &&
-          !trimmed.startsWith("requireApproval();")
-        ) {
+        const previousTrimmed = i > 0 ? lines[i - 1].trim() : "";
+        const alreadyGuarded = previousTrimmed.startsWith("requireApproval();");
+        if (hasMutationCall && !trimmed.startsWith("//") && !alreadyGuarded) {
           const indent = line.match(/^\s*/)?.[0] || "";
-          lines[i] = `${indent}requireApproval();\n${line}`;
+          lines.splice(i, 0, `${indent}requireApproval();`);
+          i++; // skip past the inserted guard
           hasLineChanges = true;
           fixes.push({
             file,

@@ -184,3 +184,45 @@ test("fixSecurityRules injects approval guard for destructive actions", async ()
 
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
+
+test("fixSecurityRules destructive-action injection is idempotent", async () => {
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "agentlint-destructive-idempotent-"),
+  );
+  const filePath = path.join(tempDir, "mutations.ts");
+  const original = [
+    'import * as fs from "fs";',
+    "function run() {",
+    '  fs.writeFileSync("x.txt", "data");',
+    '  fs.writeFileSync("y.txt", "more");',
+    "}",
+  ].join("\n");
+
+  fs.writeFileSync(filePath, original, "utf8");
+
+  const issues: AgentIssue[] = [
+    {
+      file: "mutations.ts",
+      line: 1,
+      message: "Destructive action without confirmation",
+      ruleId: "security-destructive-action",
+      severity: "error",
+      category: "Execution Safety",
+    },
+  ];
+
+  await fixSecurityRules(filePath, issues);
+  const afterFirst = fs.readFileSync(filePath, "utf8");
+
+  // Both call sites should be guarded after the first run (2 invocations)
+  const firstCount = (afterFirst.match(/requireApproval\(\);/g) || []).length;
+  assert.equal(firstCount, 2);
+
+  // Run the fixer a second time — file must not change
+  await fixSecurityRules(filePath, issues);
+  const afterSecond = fs.readFileSync(filePath, "utf8");
+
+  assert.equal(afterSecond, afterFirst);
+
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});

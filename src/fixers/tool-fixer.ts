@@ -84,17 +84,27 @@ export async function fixToolRules(
     }
 
     if (overlappingIssues.length > 0) {
+      const TOOL_SHAPE_REGEX =
+        /\b(?:description|parameters|inputSchema|input_schema|handler|execute|examples)\s*:/;
+      const isToolNameLine = (idx: number): boolean => {
+        const start = Math.max(0, idx - 5);
+        const end = Math.min(lines.length, idx + 6);
+        return TOOL_SHAPE_REGEX.test(lines.slice(start, end).join("\n"));
+      };
+
       const seenNames: Record<string, number> = {};
       const usedNames = new Set<string>();
 
-      for (const line of lines) {
+      for (let i = 0; i < lines.length; i++) {
+        if (!isToolNameLine(i)) continue;
         const namePattern = /name:\s*['"]([^'"]+)['"]/g;
-        for (const match of line.matchAll(namePattern)) {
+        for (const match of lines[i].matchAll(namePattern)) {
           usedNames.add(match[1]);
         }
       }
 
       for (let i = 0; i < lines.length; i++) {
+        if (!isToolNameLine(i)) continue;
         const line = lines[i];
         const namePattern = /(name:\s*['"])([^'"]+)(['"])/g;
         let lineChanged = false;
