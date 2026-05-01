@@ -78,7 +78,10 @@ export async function fixContextRules(
       const lines = content.split("\n");
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
-        if (line.includes("new Agent({") || line.includes("Agent.init({")) {
+        if (
+          (line.includes("new Agent({") || line.includes("Agent.init({")) &&
+          !line.includes("traceId")
+        ) {
           lines[i] = line.replace("{", '{ traceId: "TODO: inject-trace-id", ');
           modified = true;
           fixes.push({
@@ -87,7 +90,6 @@ export async function fixContextRules(
             ruleId: "observability-missing-trace-id",
             message: `Injected missing traceId on line ${i + 1}.`,
           });
-          break;
         }
       }
       content = lines.join("\n");

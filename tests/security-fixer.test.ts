@@ -226,3 +226,81 @@ test("fixSecurityRules destructive-action injection is idempotent", async () => 
 
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
+
+import { checkSecurityRules } from "../src/scanners/rules/security-lint.js";
+
+test("checkSecurityRules detects fs.rmSync without approval", () => {
+  const config = loadConfig(".");
+  const lines = ['fs.rmSync("/tmp/data", { recursive: true });'];
+  const issues = checkSecurityRules("cleanup.ts", lines, config);
+  assert.ok(
+    issues.some((i) => i.ruleId === "security-destructive-action"),
+  );
+});
+
+test("checkSecurityRules detects child_process.spawn without approval", () => {
+  const config = loadConfig(".");
+  const lines = ['child_process.spawn("rm", ["-rf", "/data"]);'];
+  const issues = checkSecurityRules("dangerous.ts", lines, config);
+  assert.ok(
+    issues.some((i) => i.ruleId === "security-destructive-action"),
+  );
+});
+
+test("checkSecurityRules detects execa without approval", () => {
+  const config = loadConfig(".");
+  const lines = ['await execa("rm", ["-rf", "/data"]);'];
+  const issues = checkSecurityRules("danger.ts", lines, config);
+  assert.ok(
+    issues.some((i) => i.ruleId === "security-destructive-action"),
+  );
+});
+
+test("checkSecurityRules ignores lone 'approve' word in comments", () => {
+  const config = loadConfig(".");
+  const lines = [
+    "// TODO: ask the PM to approve this rollout",
+    'fs.writeFileSync("/etc/config.json", data);',
+  ];
+  const issues = checkSecurityRules("rollout.ts", lines, config);
+  // The bare word "approve" in a comment must NOT silence the rule
+  assert.ok(
+    issues.some((i) => i.ruleId === "security-destructive-action"),
+  );
+});
+
+import { loadConfig } from "../src/config.js";
+
+test("fixSecurityRules emits JS-compatible helpers for .js files", async () => {
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "agentlint-js-target-")
+  );
+  const jsFilePath = path.join(tempDir, "mutations.js");
+  const original = [
+    'const fs = require("fs");',
+    "function run() {",
+    '  fs.writeFileSync("x.txt", "data");',
+    "}",
+  ].join("\n");
+  fs.writeFileSync(jsFilePath, original, "utf8");
+
+  const issues: AgentIssue[] = [
+    {
+      file: "mutations.js",
+      line: 1,
+      message: "Destructive action without confirmation",
+      ruleId: "security-destructive-action",
+      severity: "error",
+      category: "Execution Safety",
+    },
+  ];
+
+  await fixSecurityRules(jsFilePath, issues);
+  const updated = fs.readFileSync(jsFilePath, "utf8");
+
+  // No TS type annotations should appear in JS output
+  assert.match(updated, /function requireApproval\(\)\s*\{/);
+  assert.doesNotMatch(updated, /requireApproval\(\):\s*void/);
+
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});

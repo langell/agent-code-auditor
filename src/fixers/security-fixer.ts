@@ -17,6 +17,10 @@ function insertAfterImports(content: string, block: string): string {
   return lines.join("\n");
 }
 
+function isTypeScriptTarget(file: string): boolean {
+  return /\.(?:ts|tsx|mts|cts)$/.test(file);
+}
+
 function isIdentifierToken(value: string): boolean {
   if (!value) return false;
   const first = value[0];
@@ -133,12 +137,18 @@ export async function fixSecurityRules(
 
   if (inputValidationIssues.length > 0) {
     if (!looksValidated(content)) {
-      const validateHelper =
-        "function validate(input: unknown): void {\n" +
-        "  if (input === null || input === undefined) {\n" +
-        "    throw new Error('Invalid input');\n" +
-        "  }\n" +
-        "}\n";
+      const isTs = isTypeScriptTarget(file);
+      const validateHelper = isTs
+        ? "function validate(input: unknown): void {\n" +
+          "  if (input === null || input === undefined) {\n" +
+          "    throw new Error('Invalid input');\n" +
+          "  }\n" +
+          "}\n"
+        : "function validate(input) {\n" +
+          "  if (input === null || input === undefined) {\n" +
+          "    throw new Error('Invalid input');\n" +
+          "  }\n" +
+          "}\n";
 
       if (
         !content.includes("function validate(") &&
@@ -237,21 +247,27 @@ export async function fixSecurityRules(
   }
 
   if (destructiveActionIssues.length > 0) {
-    const loweredContent = content.toLowerCase();
-    const hasApprovalTerms =
-      loweredContent.includes("confirm") || loweredContent.includes("approve");
+    const APPROVAL_REGEX =
+      /\b(?:approved|confirmed|authorized|verified|consented)\b|\b(?:approve|confirm|authorize|consent|requireApproval|requestApproval|getUserConsent)\s*\(/;
+    const hasApprovalTerms = APPROVAL_REGEX.test(content);
 
     if (!hasApprovalTerms) {
       if (!/function\s+requireApproval\s*\(/.test(content)) {
-        content = insertAfterImports(
-          content,
-          "function requireApproval(): void {\n" +
+        const isTs = isTypeScriptTarget(file);
+        const requireApprovalHelper = isTs
+          ? "function requireApproval(): void {\n" +
             "  const approved = false;\n" +
             "  if (!approved) {\n" +
             "    throw new Error('Operation requires explicit approval');\n" +
             "  }\n" +
-            "}\n",
-        );
+            "}\n"
+          : "function requireApproval() {\n" +
+            "  const approved = false;\n" +
+            "  if (!approved) {\n" +
+            "    throw new Error('Operation requires explicit approval');\n" +
+            "  }\n" +
+            "}\n";
+        content = insertAfterImports(content, requireApprovalHelper);
         modified = true;
         fixes.push({
           file,
@@ -262,14 +278,13 @@ export async function fixSecurityRules(
       }
 
       const lines = content.split("\n");
+      const DESTRUCTIVE_LINE_REGEX =
+        /\b(?:fs(?:\.promises)?)\.(?:writeFile|writeFileSync|rm|rmSync|unlink|unlinkSync|rmdir|rmdirSync|truncate|truncateSync|copyFile|copyFileSync|rename|renameSync)\s*\(|\bchild_process\.(?:exec|execSync|execFile|execFileSync|spawn|spawnSync|fork)\s*\(|\bexeca\s*\(|\bshelljs\.\w+\s*\(/;
       let hasLineChanges = false;
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         const trimmed = line.trim();
-        const hasMutationCall =
-          (line.includes("fs.writeFileSync") ||
-            line.includes("child_process.exec")) &&
-          line.includes("(");
+        const hasMutationCall = DESTRUCTIVE_LINE_REGEX.test(line);
         const previousTrimmed = i > 0 ? lines[i - 1].trim() : "";
         const alreadyGuarded = previousTrimmed.startsWith("requireApproval();");
         if (hasMutationCall && !trimmed.startsWith("//") && !alreadyGuarded) {

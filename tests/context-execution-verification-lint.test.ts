@@ -116,7 +116,11 @@ test("checkExecutionRules detects mutating operations without dry-run", () => {
   const lines = [
     "child_process.exec('rm -rf /data');",
   ];
-  const issues = checkExecutionRules("dangerous.ts", lines, config);
+  const issues = checkExecutionRules(
+    "src/tools/dangerous.ts",
+    lines,
+    config,
+  );
 
   const dryRunIssues = issues.filter((i) => i.ruleId === "execution-no-dry-run");
   assert.ok(dryRunIssues.length > 0);
@@ -131,7 +135,23 @@ test("checkExecutionRules allows mutating operations with dry-run", () => {
     "  child_process.exec('rm -rf /data');",
     "}",
   ];
-  const issues = checkExecutionRules("dangerous.ts", lines, config);
+  const issues = checkExecutionRules(
+    "src/tools/dangerous.ts",
+    lines,
+    config,
+  );
+
+  const dryRunIssues = issues.filter((i) => i.ruleId === "execution-no-dry-run");
+  assert.strictEqual(dryRunIssues.length, 0);
+});
+
+test("checkExecutionRules does not flag mutating ops outside agent-tool contexts", () => {
+  const config = loadConfig(".");
+  const lines = [
+    "child_process.exec('mv /tmp/foo /tmp/bar');",
+  ];
+  // File is a plain build script — not under tools/ or agents/, no LLM SDK imports.
+  const issues = checkExecutionRules("scripts/move.ts", lines, config);
 
   const dryRunIssues = issues.filter((i) => i.ruleId === "execution-no-dry-run");
   assert.strictEqual(dryRunIssues.length, 0);

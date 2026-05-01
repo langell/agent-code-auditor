@@ -651,3 +651,171 @@ test("checkContextRules does not flag domain Agent class without LLM-shape props
     0,
   );
 });
+
+import { checkExecutionRules } from "../src/scanners/rules/execution-lint.js";
+
+test("checkExecutionRules does not silence while(true) when maxSteps appears in unrelated function", () => {
+  const config = loadConfig(".");
+  const content = [
+    "function configure() {",
+    "  return { maxSteps: 100 };", // mention is in unrelated function
+    "}",
+    "function loop() {",
+    "  while (true) {",
+    "    doWork();",
+    "  }",
+    "}",
+  ].join("\n");
+
+  const sourceFile = ts.createSourceFile(
+    "loop.ts",
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const issues = checkExecutionRules(
+    "loop.ts",
+    content.split("\n"),
+    config,
+    sourceFile,
+  );
+
+  // The while(true) inside loop() must still be flagged even though
+  // maxSteps appears elsewhere in the file.
+  assert.ok(
+    issues.some((i) => i.ruleId === "execution-missing-max-steps"),
+  );
+});
+
+test("checkSecurityRules detects multi-line template literal with toolOutput", () => {
+  const config = loadConfig(".");
+  const content = [
+    "const prompt = `",
+    "  Use this tool output:",
+    "  ${toolOutput}",
+    "`;",
+  ].join("\n");
+  const sourceFile = ts.createSourceFile(
+    "agent.ts",
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const issues = checkSecurityRules(
+    "agent.ts",
+    content.split("\n"),
+    config,
+    sourceFile,
+  );
+  assert.ok(
+    issues.some((i) => i.ruleId === "security-prompt-injection"),
+  );
+});
+
+test("checkSecurityRules detects toolResult variant", () => {
+  const config = loadConfig(".");
+  const lines = ["const p = `Result: ${toolResult}`;"];
+  const issues = checkSecurityRules("p.ts", lines, config);
+  assert.ok(
+    issues.some((i) => i.ruleId === "security-prompt-injection"),
+  );
+});
+
+test("checkSecurityRules detects lastToolMessage variant", () => {
+  const config = loadConfig(".");
+  const lines = ["const p = `Last: ${lastToolMessage.text}`;"];
+  const issues = checkSecurityRules("p.ts", lines, config);
+  assert.ok(
+    issues.some((i) => i.ruleId === "security-prompt-injection"),
+  );
+});
+
+test("checkSecurityRules does not flag toolName template", () => {
+  const config = loadConfig(".");
+  const lines = ["const p = `Calling ${toolName}`;"];
+  const issues = checkSecurityRules("p.ts", lines, config);
+  assert.equal(
+    issues.filter((i) => i.ruleId === "security-prompt-injection").length,
+    0,
+  );
+});
+
+test("checkSecurityRules detects userInfo PII variant", () => {
+  const config = loadConfig(".");
+  const lines = ["const userInfo = await db.users.find();"];
+  const issues = checkSecurityRules("svc.ts", lines, config);
+  assert.ok(
+    issues.some((i) => i.ruleId === "context-unredacted-pii"),
+  );
+});
+
+test("checkSecurityRules detects accountDetails PII variant", () => {
+  const config = loadConfig(".");
+  const lines = ["const accountDetails = fetchAccount(id);"];
+  const issues = checkSecurityRules("svc.ts", lines, config);
+  assert.ok(
+    issues.some((i) => i.ruleId === "context-unredacted-pii"),
+  );
+});
+
+test("checkSecurityRules detects plural users assignment", () => {
+  const config = loadConfig(".");
+  const lines = ["const users = await db.findUsers();"];
+  const issues = checkSecurityRules("svc.ts", lines, config);
+  assert.ok(
+    issues.some((i) => i.ruleId === "context-unredacted-pii"),
+  );
+});
+
+test("checkSecurityRules accepts redacted PII via mask helper", () => {
+  const config = loadConfig(".");
+  const lines = [
+    "const userInfo = await db.users.find();",
+    "const masked = mask(userInfo);",
+  ];
+  const issues = checkSecurityRules("svc.ts", lines, config);
+  assert.equal(
+    issues.filter((i) => i.ruleId === "context-unredacted-pii").length,
+    0,
+  );
+});
+
+test("runASTAnalyzer skips source-only rule families on markdown files", async () => {
+  const tempDir = makeTempDir("agentlint-md-skip-rules-");
+  fs.writeFileSync(
+    path.join(tempDir, "task.md"),
+    [
+      "# Task",
+      "Acceptance Criteria: deliver",
+      "Rollback: revert",
+      "",
+      "Some example pseudocode:",
+      "  fs.writeFileSync('x.txt', 'data');",
+      "  child_process.exec('rm -rf /');",
+      "  while (true) {}",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  const config = loadConfig(".");
+  const issues = await runASTAnalyzer(tempDir, config);
+
+  // No tool/execution/code-quality/verification rules should have fired
+  const sourceOnlyRules = [
+    "tool-overlapping",
+    "tool-weak-schema",
+    "tool-missing-examples",
+    "execution-missing-max-steps",
+    "architecture-atomic-transactions",
+    "execution-no-dry-run",
+    "code-quality-no-any",
+    "verification-missing-tests",
+  ];
+  for (const ruleId of sourceOnlyRules) {
+    assert.equal(
+      issues.filter((i) => i.ruleId === ruleId).length,
+      0,
+      `expected no ${ruleId} issues on markdown`,
+    );
+  }
+});

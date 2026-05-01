@@ -160,3 +160,44 @@ test("fixVerificationRules handles empty issues array", async () => {
 
   assert.strictEqual(fixes.length, 0);
 });
+
+test("fixContextRules non-AST fallback fixes all Agent occurrences in a file", async () => {
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "agentlint-context-multi-agent-")
+  );
+  const filePath = path.join(tempDir, "agents.ts");
+  const original = [
+    "const a = new Agent({ tools: [] });",
+    "const b = new Agent({ model: 'x' });",
+    "",
+  ].join("\n");
+  fs.writeFileSync(filePath, original, "utf8");
+
+  const issues: AgentIssue[] = [
+    {
+      file: "agents.ts",
+      line: 1,
+      message: "missing trace",
+      ruleId: "observability-missing-trace-id",
+      severity: "warn",
+      category: "Context",
+    },
+    {
+      file: "agents.ts",
+      line: 2,
+      message: "missing trace",
+      ruleId: "observability-missing-trace-id",
+      severity: "warn",
+      category: "Context",
+    },
+  ];
+
+  await fixContextRules(filePath, issues);
+  const updated = fs.readFileSync(filePath, "utf8");
+
+  // Both Agent inits should have traceId injected
+  const traceIdCount = (updated.match(/traceId:/g) || []).length;
+  assert.equal(traceIdCount, 2);
+
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
