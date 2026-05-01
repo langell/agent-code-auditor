@@ -41,11 +41,17 @@ export async function fixCodeQualityRules(
     }
 
     if (lineIssues.length > 0) {
+      // Skip lines that contain string literals or comments — without AST
+      // positions we can't tell whether `: any` lives in code or inside a
+      // string/comment, and rewriting the latter corrupts the file.
+      const isUnsafeLine = (line: string) => /["'`]|\/\/|\/\*|\*\//.test(line);
       const lines = content.split("\n");
       for (const issue of lineIssues) {
         const lineIdx = issue.line - 1;
         if (lineIdx >= 0 && lineIdx < lines.length) {
           const originalLine = lines[lineIdx];
+          if (isUnsafeLine(originalLine)) continue;
+
           const fixedLine = originalLine
             .replace(/:\s*any\b/g, ": unknown")
             .replace(/\bas\s+any\b/g, "as unknown")

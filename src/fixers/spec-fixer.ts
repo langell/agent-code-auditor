@@ -64,14 +64,18 @@ export async function fixSpecRules(
       const lineIdx = issue.line - 1;
       if (lineIdx >= 0 && lineIdx < lines.length) {
         const line = lines[lineIdx];
-        if (
-          line.includes("TODO:") &&
-          line.toLowerCase().includes("implement")
-        ) {
-          lines[lineIdx] = line.replace(
-            /\/\/.*T(?:ODO):.*im(?:plement).*/i,
-            'throw new Error("Not implemented - AI placeholder detected");',
-          );
+        const trimmed = line.trim();
+        // Only replace when the line is a standalone single-line comment.
+        // Inline trailing comments (e.g. `const x = 1; // TODO: implement`)
+        // and JSX comment blocks would break syntax if rewritten.
+        const isStandaloneLineComment =
+          trimmed.startsWith("//") &&
+          /T(?:ODO):/i.test(trimmed) &&
+          /im(?:plement)/i.test(trimmed);
+        if (isStandaloneLineComment) {
+          const indent = line.match(/^\s*/)?.[0] ?? "";
+          lines[lineIdx] =
+            `${indent}throw new Error("Not implemented - AI placeholder detected");`;
           fileModified = true;
           fixes.push({
             file,

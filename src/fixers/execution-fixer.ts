@@ -113,13 +113,16 @@ export async function fixExecutionRules(
     }
 
     const lines = content.split("\n");
-    const mutationPattern =
-      /(fs\.writeFileSync|child_process\.exec|db\.(insert|update|delete))\s*\(/;
+    // Only wrap when the entire mutation call fits on one line. Multi-line
+    // calls (e.g. db.insert({\n  ... }\n)) would be corrupted by an inline
+    // `if (!dryRun)` prefix.
+    const SINGLE_LINE_MUTATION_REGEX =
+      /^(\s*)(?:(?:fs(?:\.promises)?)\.(?:writeFile|writeFileSync|rm|rmSync|unlink|unlinkSync|rmdir|rmdirSync|truncate|truncateSync|copyFile|copyFileSync|rename|renameSync)|child_process\.(?:exec|execSync|execFile|execFileSync|spawn|spawnSync|fork)|\w+\.(?:insert|update|delete|upsert|create|save|destroy|remove))\s*\([^)]*\)\s*;?\s*$/;
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       const trimmed = line.trim();
       if (
-        mutationPattern.test(line) &&
+        SINGLE_LINE_MUTATION_REGEX.test(line) &&
         !trimmed.startsWith("//") &&
         !trimmed.startsWith("if (!dryRun)")
       ) {

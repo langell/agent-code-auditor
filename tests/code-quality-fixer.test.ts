@@ -84,3 +84,37 @@ test("fixCodeQualityRules skips when no matching rule issues are provided", asyn
 
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
+
+test("fixCodeQualityRules skips lines containing strings or comments", async () => {
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "agentlint-cq-string-comment-")
+  );
+  const filePath = path.join(tempDir, "mixed.ts");
+  const original = [
+    `const msg = "type: any inside string";`,
+    `// example: any here in a comment`,
+    `const x: any = 1;`,
+    ``,
+  ].join("\n");
+  fs.writeFileSync(filePath, original, "utf8");
+
+  const issues: AgentIssue[] = [1, 2, 3].map((line) => ({
+    file: filePath,
+    line,
+    message: "any",
+    ruleId: "code-quality-no-any",
+    severity: "error",
+    category: "Code Quality",
+  }));
+
+  const fixes = await fixCodeQualityRules(filePath, issues);
+  const updated = fs.readFileSync(filePath, "utf8");
+
+  // Only the bare `const x: any = 1` line is rewritten
+  assert.equal(fixes.length, 1);
+  assert.match(updated, /type:\s*any inside string/);
+  assert.match(updated, /\/\/ example:\s*any here in a comment/);
+  assert.match(updated, /const x:\s*unknown\s*=\s*1/);
+
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});

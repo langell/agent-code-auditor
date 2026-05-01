@@ -131,8 +131,8 @@ test("checkToolRules detects missing tool examples", () => {
 test("checkToolRules detects overlapping tool names", () => {
   const config = loadConfig(".");
   const lines = [
-    'const tool1 = { name: "getUserData" };',
-    'const tool2 = { name: "getUserData" };',
+    'const tool1 = { name: "getUserData", description: "fetch user" };',
+    'const tool2 = { name: "getUserData", description: "fetch user again" };',
   ];
   const issues = checkToolRules("tools.ts", lines, config);
 
@@ -143,8 +143,8 @@ test("checkToolRules detects overlapping tool names", () => {
 test("checkToolRules allows unique tool names", () => {
   const config = loadConfig(".");
   const lines = [
-    'const tool1 = { name: "getUserData" };',
-    'const tool2 = { name: "getSystemData" };',
+    'const tool1 = { name: "getUserData", description: "fetch user" };',
+    'const tool2 = { name: "getSystemData", description: "fetch system" };',
   ];
   const issues = checkToolRules("tools.ts", lines, config);
 

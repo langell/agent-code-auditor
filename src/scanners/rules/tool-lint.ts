@@ -2,6 +2,64 @@ import * as ts from "typescript";
 import { AgentLintConfig } from "../../config.js";
 import { AgentIssue, ToolDeclaration } from "../types.js";
 
+const TOOL_SHAPE_PROPS = new Set([
+  "description",
+  "parameters",
+  "inputSchema",
+  "input_schema",
+  "function",
+  "handler",
+  "execute",
+  "examples",
+]);
+
+function looksLikeToolObject(
+  props: ts.NodeArray<ts.ObjectLiteralElementLike>,
+): boolean {
+  let hasName = false;
+  let hasShapeProp = false;
+  for (const prop of props) {
+    if (
+      ts.isPropertyAssignment(prop) &&
+      prop.name &&
+      ts.isIdentifier(prop.name)
+    ) {
+      const propName = prop.name.text;
+      if (propName === "name") hasName = true;
+      if (TOOL_SHAPE_PROPS.has(propName)) hasShapeProp = true;
+    }
+  }
+  return hasName && hasShapeProp;
+}
+
+const TOOL_SHAPE_REGEX =
+  /\b(?:description|parameters|inputSchema|input_schema|handler|execute|examples)\s*:/;
+
+// Collect `name: "X"` keys only when accompanied within a small window
+// by another tool-shape property — avoids matching every `name:` field
+// in unrelated objects (UI components, GraphQL queries, etc.)
+export function collectToolNamesNonAst(content: string): string[] {
+  const names: string[] = [];
+  const lines = content.split("\n");
+  const namePattern = /name:\s*['"]([^'"]+)['"]/g;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const matches = Array.from(line.matchAll(namePattern));
+    if (matches.length === 0) continue;
+
+    const windowStart = Math.max(0, i - 5);
+    const windowEnd = Math.min(lines.length, i + 6);
+    const windowText = lines.slice(windowStart, windowEnd).join("\n");
+    if (!TOOL_SHAPE_REGEX.test(windowText)) continue;
+
+    for (const m of matches) {
+      names.push(m[1]);
+    }
+  }
+  return names;
+}
+
 export function checkToolRules(
   file: string,
   lines: string[],
@@ -83,7 +141,7 @@ export function checkToolRules(
           }
         }
 
-        if (toolName && globalTools && (hasDescription || hasTypeObject)) {
+        if (toolName && globalTools && looksLikeToolObject(node.properties)) {
           const { line } = sourceFile!.getLineAndCharacterOfPosition(
             node.getStart(),
           );
@@ -145,13 +203,9 @@ export function checkToolRules(
 
     if (globalTools) {
       const content = lines.join("\n");
-      const toolMatches = content.matchAll(/name:\s*['"](.*?)['"]/g);
-      for (const match of toolMatches) {
-        globalTools.push({
-          name: match[1],
-          file,
-          line: 1,
-        });
+      const namedToolNames = collectToolNamesNonAst(content);
+      for (const name of namedToolNames) {
+        globalTools.push({ name, file, line: 1 });
       }
     }
   }
@@ -159,7 +213,7 @@ export function checkToolRules(
   // The local tool-overlapping check is kept for backwards compatibility with tests and standalone file checks
   if (config.rules["tool-overlapping"] !== "off" && !globalTools) {
     const content = sourceFile ? sourceFile.text : lines.join("\n");
-    const toolNames = content.match(/name:\s*['"](.*?)['"]/g) || [];
+    const toolNames = collectToolNamesNonAst(content);
     const uniqueNames = new Set(toolNames);
     if (toolNames.length > uniqueNames.size) {
       issues.push({

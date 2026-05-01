@@ -115,16 +115,31 @@ export async function runASTAnalyzer(
       );
     }
 
-    // Run modular rules
+    const isSourceFile =
+      file.endsWith(".ts") ||
+      file.endsWith(".tsx") ||
+      file.endsWith(".js") ||
+      file.endsWith(".jsx") ||
+      file.endsWith(".mts") ||
+      file.endsWith(".cts") ||
+      file.endsWith(".mjs") ||
+      file.endsWith(".cjs");
+
+    // Spec, context, and security rules apply to both source and prose files
+    // (e.g. secret leakage and prompt injection still matter in .md/.prompt).
     issues.push(...checkSpecRules(file, lines, config, sourceFile));
     issues.push(...checkContextRules(file, lines, config, sourceFile));
-    issues.push(
-      ...checkToolRules(file, lines, config, sourceFile, globalTools),
-    );
-    issues.push(...checkExecutionRules(file, lines, config, sourceFile));
     issues.push(...checkSecurityRules(file, lines, config, sourceFile));
-    issues.push(...checkCodeQualityRules(file, lines, config, sourceFile));
-    issues.push(...checkVerificationRules(file, lines, config, dir));
+
+    // The remaining rule families are source-file-specific.
+    if (isSourceFile) {
+      issues.push(
+        ...checkToolRules(file, lines, config, sourceFile, globalTools),
+      );
+      issues.push(...checkExecutionRules(file, lines, config, sourceFile));
+      issues.push(...checkCodeQualityRules(file, lines, config, sourceFile));
+      issues.push(...checkVerificationRules(file, lines, config, dir));
+    }
 
     // Keep the original 3 rules for backward compatibility in the General/Tool categories
     for (let i = 0; i < lines.length; i++) {
