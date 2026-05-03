@@ -80,7 +80,53 @@ Example `.agentlintrc.json`:
 - `rules`: rule severity overrides (`error`, `warn`, `off`).
 - `fixers`: map of `ruleId` to a custom fixer class module reference.
   - String format: `./relative/path/to/module.mjs#ExportedClassName`
-  - The class must implement `fix(filePath, issues)` and return a list of fix results.
+  - Object form: `{ "path": "./module.mjs", "exportName": "ExportedClassName" }`
+
+### Custom fixer contract
+
+A custom fixer is a class with a single `fix` method. The orchestrator
+owns all file I/O — your fixer receives the file's current content as a
+string, transforms it, and returns a `FixOutcome`.
+
+```js
+// my-fixer.mjs
+export class MyFixer {
+  fix(content, issues, filePath) {
+    // issues are pre-filtered to only this fixer's ruleId
+    const updated = content.replace(/badPattern/g, "goodPattern");
+    return {
+      content: updated,
+      fixes: [
+        {
+          fixed: true,
+          ruleId: "my-rule",
+          message: "Replaced bad pattern.",
+        },
+      ],
+      // optional: scaffold sibling files (e.g. test stubs)
+      // newFiles: [{ path: "/abs/path/to/new.ts", content: "..." }],
+    };
+  }
+}
+```
+
+Contract:
+
+- Default-export OR named-export a class. The class is instantiated with
+  `new` and no constructor args.
+- The instance must implement `fix(content, issues, filePath): FixOutcome`,
+  sync or async.
+- `FixOutcome = { content, fixes, newFiles? }`. Each fix record is
+  `{ fixed, ruleId, message }` — the orchestrator stamps the file path.
+- Don't read or write files inside the fixer; return transformed content
+  and the orchestrator will write it (and any `newFiles`) once per file.
+
+A working example lives in
+[`examples/custom-fixers/secret-to-env-fixer.mjs`](examples/custom-fixers/secret-to-env-fixer.mjs).
+
+> **Breaking change in 2.x**: pre-refactor custom fixers used
+> `fix(filePath, issues): FixResult[]` and did their own file I/O. The
+> new contract above is required.
 
 ## Commands
 
