@@ -11,6 +11,7 @@ import {
   Rule,
 } from "./rules/types.js";
 import { AgentIssue } from "./scanners/types.js";
+import { loadCustomRules, mergeRules } from "./load-custom-rules.js";
 
 function parseFixerReference(ref: string | CustomFixerReference): {
   modulePath: string;
@@ -79,11 +80,11 @@ function stampFile(records: FixRecord[], file: string): FixResult[] {
   }));
 }
 
-// Build the ordered list of (Rule, ruleId) pairs that have an `applyFix`.
-// Order matches registry order, which roughly mirrors the pre-refactor
-// family-fixer dispatch order so report output stays stable.
-function fixableRules(): Rule[] {
-  return registry.filter((rule) => typeof rule.applyFix === "function");
+// Build the ordered list of Rules with an `applyFix` method from a given
+// rule set. Order matches registry order, which roughly mirrors the
+// pre-refactor family-fixer dispatch order so report output stays stable.
+function fixableRules(rules: Rule[]): Rule[] {
+  return rules.filter((rule) => typeof rule.applyFix === "function");
 }
 
 export async function runFixer(
@@ -94,7 +95,13 @@ export async function runFixer(
   const fixes: FixResult[] = [];
   const skippedRules = new Set(config.skipRules || []);
   const customFixers = await loadCustomFixers(targetDir, config);
-  const fixers = fixableRules();
+
+  // Resolve the effective rule set (built-in + any user-registered custom
+  // rules) so a custom rule's applyFix is routed to its issues just like a
+  // built-in's would be.
+  const customRules = await loadCustomRules(targetDir, config);
+  const effectiveRules = mergeRules(registry, customRules);
+  const fixers = fixableRules(effectiveRules);
 
   // Group issues by file
   const issuesByFile = issues.reduce(
