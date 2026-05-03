@@ -12,7 +12,7 @@ import {
 import { VulnerabilityReport } from "./scanners/vulnerabilities.js";
 import { LinterReport } from "./scanners/linter.js";
 import { AgentIssue } from "./scanners/types.js";
-import { runFixer } from "./fixers/index.js";
+import { runFixer } from "./fix-orchestrator.js";
 
 import { loadConfig } from "./config.js";
 

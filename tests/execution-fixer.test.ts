@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { fixExecutionRules } from "../src/fixers/execution-fixer.js";
+import { executionMissingMaxStepsRule } from "../src/rules/execution-missing-max-steps.js";
+import { executionNoDryRunRule } from "../src/rules/execution-no-dry-run.js";
 import type { AgentIssue } from "../src/scanners/types.js";
 
-test("fixExecutionRules replaces all while(true) loops with bounded loops", () => {
+test("executionMissingMaxStepsRule.applyFix replaces all while(true) loops with bounded loops", () => {
   const original = [
     "function run() {",
     "  while (true) {",
@@ -28,7 +29,11 @@ test("fixExecutionRules replaces all while(true) loops with bounded loops", () =
     },
   ];
 
-  const { content, fixes } = fixExecutionRules(original, issues, "agent.ts");
+  const { content, fixes } = executionMissingMaxStepsRule.applyFix!(
+    original,
+    issues,
+    "agent.ts",
+  );
 
   assert.equal(fixes.length, 2);
   assert.doesNotMatch(content, /while\s*\(\s*true\s*\)/);
@@ -38,7 +43,7 @@ test("fixExecutionRules replaces all while(true) loops with bounded loops", () =
   );
 });
 
-test("fixExecutionRules leaves file unchanged when rule issue is absent", () => {
+test("executionMissingMaxStepsRule.applyFix is a no-op when rule issue is absent", () => {
   const original = [
     "function run() {",
     "  while (true) {",
@@ -58,13 +63,17 @@ test("fixExecutionRules leaves file unchanged when rule issue is absent", () => 
     },
   ];
 
-  const { content, fixes } = fixExecutionRules(original, issues, "agent.ts");
+  const { content, fixes } = executionMissingMaxStepsRule.applyFix!(
+    original,
+    issues,
+    "agent.ts",
+  );
 
   assert.equal(fixes.length, 0);
   assert.equal(content, original);
 });
 
-test("fixExecutionRules injects dry-run guards for mutating calls", () => {
+test("executionNoDryRunRule.applyFix injects dry-run guards for mutating calls", () => {
   const original = [
     'import * as fs from "fs";',
     "function run() {",
@@ -84,7 +93,11 @@ test("fixExecutionRules injects dry-run guards for mutating calls", () => {
     },
   ];
 
-  const { content, fixes } = fixExecutionRules(original, issues, "runner.ts");
+  const { content, fixes } = executionNoDryRunRule.applyFix!(
+    original,
+    issues,
+    "runner.ts",
+  );
 
   assert.ok(fixes.length >= 2);
   assert.match(content, /const dryRun = process\.env\.DRY_RUN === "1";/);
@@ -94,7 +107,7 @@ test("fixExecutionRules injects dry-run guards for mutating calls", () => {
   );
 });
 
-test("fixExecutionRules skips dry-run injection when already present", () => {
+test("executionNoDryRunRule.applyFix skips when dryRun helper already present", () => {
   const original = [
     'const dryRun = process.env.DRY_RUN === "1";',
     "function run() {",
@@ -114,13 +127,17 @@ test("fixExecutionRules skips dry-run injection when already present", () => {
     },
   ];
 
-  const { content, fixes } = fixExecutionRules(original, issues, "runner.ts");
+  const { content, fixes } = executionNoDryRunRule.applyFix!(
+    original,
+    issues,
+    "runner.ts",
+  );
 
   assert.equal(fixes.length, 0);
   assert.equal(content, original);
 });
 
-test("fixExecutionRules does not wrap multi-line mutation calls (avoids broken syntax)", () => {
+test("executionNoDryRunRule.applyFix does not wrap multi-line mutation calls (avoids broken syntax)", () => {
   const original = [
     "function run() {",
     "  db.insert({",
@@ -142,12 +159,15 @@ test("fixExecutionRules does not wrap multi-line mutation calls (avoids broken s
     },
   ];
 
-  const { content } = fixExecutionRules(original, issues, "tools.ts");
+  const { content } = executionNoDryRunRule.applyFix!(
+    original,
+    issues,
+    "tools.ts",
+  );
 
   // The dryRun helper is added at the top
   assert.match(content, /const dryRun = process\.env\.DRY_RUN/);
-  // But the multi-line db.insert is left untouched (the line "  db.insert({"
-  // would otherwise be wrapped, breaking the call)
+  // But the multi-line db.insert is left untouched
   assert.match(content, /^\s+db\.insert\(\{/m);
   assert.doesNotMatch(content, /if \(!dryRun\) db\.insert\(\{/);
 });

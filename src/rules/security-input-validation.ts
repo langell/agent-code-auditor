@@ -1,6 +1,6 @@
 import * as ts from "typescript";
 import { AgentIssue } from "../scanners/types.js";
-import { looksValidated } from "../scanners/rules/validation-helpers.js";
+import { looksValidated } from "./_validation-helpers.js";
 import { insertAfterImports, isTypeScriptTarget } from "./_helpers.js";
 import { FixRecord, Rule } from "./types.js";
 

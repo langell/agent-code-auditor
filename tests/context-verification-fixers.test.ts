@@ -4,11 +4,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import test from "node:test";
 
-import { fixContextRules } from "../src/fixers/context-fixer.js";
-import { fixVerificationRules } from "../src/fixers/verification-fixer.js";
+import { observabilityMissingTraceIdRule } from "../src/rules/observability-missing-trace-id.js";
+import { verificationMissingTestsRule } from "../src/rules/verification-missing-tests.js";
 import type { AgentIssue } from "../src/scanners/types.js";
 
-test("fixContextRules injects traceId into Agent initialization", () => {
+test("observabilityMissingTraceIdRule.applyFix injects traceId into Agent initialization", () => {
   const original = `
 const agent = new Agent({
   name: 'TestAgent',
@@ -24,20 +24,22 @@ const agent = new Agent({
         "Agent initialization found without an explicit Trace ID or Run ID.",
       ruleId: "observability-missing-trace-id",
       severity: "warn",
-      suggestion:
-        "Ensure a traceId or runId is passed into the agent context for observability and debugging.",
       category: "Context",
     },
   ];
 
-  const { content, fixes } = fixContextRules(original, issues, "agent.ts");
+  const { content, fixes } = observabilityMissingTraceIdRule.applyFix!(
+    original,
+    issues,
+    "agent.ts",
+  );
 
   assert.ok(fixes.length > 0);
   assert.strictEqual(fixes[0].ruleId, "observability-missing-trace-id");
   assert.match(content, /traceId/);
 });
 
-test("fixContextRules handles file with Agent.init", () => {
+test("observabilityMissingTraceIdRule.applyFix handles file with Agent.init", () => {
   const original = `
 const agent = Agent.init({
   name: 'TestAgent'
@@ -52,33 +54,36 @@ const agent = Agent.init({
         "Agent initialization found without an explicit Trace ID or Run ID.",
       ruleId: "observability-missing-trace-id",
       severity: "warn",
-      suggestion:
-        "Ensure a traceId or runId is passed into the agent context for observability and debugging.",
       category: "Context",
     },
   ];
 
-  const { fixes } = fixContextRules(original, issues, "agent.ts");
+  const { fixes } = observabilityMissingTraceIdRule.applyFix!(
+    original,
+    issues,
+    "agent.ts",
+  );
 
   assert.ok(fixes.length > 0);
 });
 
-test("fixContextRules returns no fixes when no matching issues", () => {
+test("observabilityMissingTraceIdRule.applyFix returns no fixes when no matching issues", () => {
   const original = "const x = 1;";
-  const { content, fixes } = fixContextRules(original, [], "irrelevant.ts");
+  const { content, fixes } = observabilityMissingTraceIdRule.applyFix!(
+    original,
+    [],
+    "irrelevant.ts",
+  );
 
   assert.strictEqual(fixes.length, 0);
   assert.strictEqual(content, original);
 });
 
-test("fixVerificationRules creates test file for missing verification", () => {
+test("verificationMissingTestsRule.applyFix scaffolds new test file", () => {
   const tempDir = fs.mkdtempSync(
     path.join(os.tmpdir(), "agentlint-verification-fixer-test-"),
   );
   const filePath = path.join(tempDir, "utils.ts");
-  // The fixer reads package.json (workspace context) for framework
-  // detection, and checks sibling test file existence — both are real
-  // workspace I/O, not target I/O. Source content stays in-memory.
   fs.writeFileSync(filePath, "export function helper() {}", "utf8");
 
   const issues: AgentIssue[] = [
@@ -88,13 +93,11 @@ test("fixVerificationRules creates test file for missing verification", () => {
       message: "Missing corresponding test file for business logic module.",
       ruleId: "verification-missing-tests",
       severity: "warn",
-      suggestion:
-        "Every core business logic file MUST include a corresponding test file.",
       category: "Verification/Security",
     },
   ];
 
-  const { fixes, newFiles } = fixVerificationRules(
+  const { fixes, newFiles } = verificationMissingTestsRule.applyFix!(
     "export function helper() {}",
     issues,
     filePath,
@@ -111,7 +114,7 @@ test("fixVerificationRules creates test file for missing verification", () => {
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-test("fixVerificationRules skips if test file already exists", () => {
+test("verificationMissingTestsRule.applyFix skips if test file already exists", () => {
   const tempDir = fs.mkdtempSync(
     path.join(os.tmpdir(), "agentlint-verification-fixer-exists-test-"),
   );
@@ -127,13 +130,11 @@ test("fixVerificationRules skips if test file already exists", () => {
       message: "Missing corresponding test file for business logic module.",
       ruleId: "verification-missing-tests",
       severity: "warn",
-      suggestion:
-        "Every core business logic file MUST include a corresponding test file.",
       category: "Verification/Security",
     },
   ];
 
-  const { fixes, newFiles } = fixVerificationRules(
+  const { fixes, newFiles } = verificationMissingTestsRule.applyFix!(
     "export function helper() {}",
     issues,
     filePath,
@@ -145,12 +146,16 @@ test("fixVerificationRules skips if test file already exists", () => {
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-test("fixVerificationRules handles empty issues array", () => {
-  const { fixes } = fixVerificationRules("// any", [], "/tmp/test.ts");
+test("verificationMissingTestsRule.applyFix handles empty issues array", () => {
+  const { fixes } = verificationMissingTestsRule.applyFix!(
+    "// any",
+    [],
+    "/tmp/test.ts",
+  );
   assert.strictEqual(fixes.length, 0);
 });
 
-test("fixContextRules non-AST fallback fixes all Agent occurrences in a file", () => {
+test("observabilityMissingTraceIdRule.applyFix non-AST fallback fixes all Agent occurrences", () => {
   const original = [
     "const a = new Agent({ tools: [] });",
     "const b = new Agent({ model: 'x' });",
@@ -176,7 +181,11 @@ test("fixContextRules non-AST fallback fixes all Agent occurrences in a file", (
     },
   ];
 
-  const { content } = fixContextRules(original, issues, "agents.ts");
+  const { content } = observabilityMissingTraceIdRule.applyFix!(
+    original,
+    issues,
+    "agents.ts",
+  );
 
   // Both Agent inits should have traceId injected
   const traceIdCount = (content.match(/traceId:/g) || []).length;
