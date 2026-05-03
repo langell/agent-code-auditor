@@ -1,7 +1,4 @@
 import assert from "node:assert/strict";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import test from "node:test";
 
 import { fixSecurityRules } from "../src/fixers/security-fixer.js";
@@ -9,14 +6,7 @@ import { fixSpecRules } from "../src/fixers/spec-fixer.js";
 import { fixToolRules } from "../src/fixers/tool-fixer.js";
 import type { AgentIssue } from "../src/scanners/types.js";
 
-test("fixSecurityRules handles prompt injection fix", async () => {
-  const tempDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "agentlint-security-fix-test-")
-  );
-  const filePath = path.join(tempDir, "agent.ts");
-  const content = `const prompt = \`User said: \${toolOutput}\`;`;
-  fs.writeFileSync(filePath, content, "utf8");
-
+test("fixSecurityRules accepts empty content with prompt-injection issue", () => {
   const issues: AgentIssue[] = [
     {
       file: "agent.ts",
@@ -28,19 +18,17 @@ test("fixSecurityRules handles prompt injection fix", async () => {
     },
   ];
 
-  const fixes = await fixSecurityRules(filePath, issues);
-  assert.ok(typeof fixes === "object" || Array.isArray(fixes));
-
-  fs.rmSync(tempDir, { recursive: true, force: true });
+  const outcome = fixSecurityRules(
+    "const prompt = `User said: ${toolOutput}`;",
+    issues,
+    "agent.ts",
+  );
+  assert.ok(typeof outcome.content === "string");
+  assert.ok(Array.isArray(outcome.fixes));
 });
 
-test("fixSpecRules adds acceptance criteria to spec", async () => {
-  const tempDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "agentlint-spec-fix-test-")
-  );
-  const filePath = path.join(tempDir, "task.md");
-  const content = `# Task\nBuild a feature`;
-  fs.writeFileSync(filePath, content, "utf8");
+test("fixSpecRules adds acceptance criteria to spec", () => {
+  const original = "# Task\nBuild a feature";
 
   const issues: AgentIssue[] = [
     {
@@ -53,24 +41,18 @@ test("fixSpecRules adds acceptance criteria to spec", async () => {
     },
   ];
 
-  const fixes = await fixSpecRules(filePath, issues);
-  assert.ok(typeof fixes === "object" || Array.isArray(fixes));
-
-  fs.rmSync(tempDir, { recursive: true, force: true });
+  const { content, fixes } = fixSpecRules(original, issues, "task.md");
+  assert.ok(fixes.length > 0);
+  assert.match(content, /Acceptance Criteria/);
 });
 
-test("fixToolRules removes duplicate tool names", async () => {
-  const tempDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "agentlint-tool-fix-test-")
-  );
-  const filePath = path.join(tempDir, "tools.ts");
-  const content = `
+test("fixToolRules removes duplicate tool names", () => {
+  const original = `
 const tools = [
-  { name: "getData", type: "action" },
-  { name: "getData", type: "query" }
+  { name: "getData", description: "first" },
+  { name: "getData", description: "second" }
 ];
 `;
-  fs.writeFileSync(filePath, content, "utf8");
 
   const issues: AgentIssue[] = [
     {
@@ -83,17 +65,14 @@ const tools = [
     },
   ];
 
-  const fixes = await fixToolRules(filePath, issues);
-  assert.ok(Array.isArray(fixes) || typeof fixes === "object");
-
-  fs.rmSync(tempDir, { recursive: true, force: true });
+  const { fixes } = fixToolRules(original, issues, "tools.ts");
+  assert.ok(Array.isArray(fixes));
 });
 
-test("fixSecurityRules returns empty for non-existent file", async () => {
-  const nonExistentFile = "/tmp/does-not-exist.ts";
+test("fixSecurityRules returns empty fixes when content has no matching patterns", () => {
   const issues: AgentIssue[] = [
     {
-      file: nonExistentFile,
+      file: "agent.ts",
       line: 1,
       message: "Test issue",
       ruleId: "security-prompt-injection",
@@ -102,19 +81,16 @@ test("fixSecurityRules returns empty for non-existent file", async () => {
     },
   ];
 
-  const fixes = await fixSecurityRules(nonExistentFile, issues);
-  assert.ok(Array.isArray(fixes));
-
-  fs.rmSync("/tmp/does-not-exist.ts", { force: true });
+  const { fixes } = fixSecurityRules(
+    "const x = 1;",
+    issues,
+    "agent.ts",
+  );
+  assert.equal(fixes.length, 0);
 });
 
-test("fixSpecRules adds rollback section to spec", async () => {
-  const tempDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "agentlint-spec-rollback-test-")
-  );
-  const filePath = path.join(tempDir, "migration.md");
-  const content = `# Migration Task\nMigrate user data`;
-  fs.writeFileSync(filePath, content, "utf8");
+test("fixSpecRules adds rollback section to spec", () => {
+  const original = "# Migration Task\nMigrate user data";
 
   const issues: AgentIssue[] = [
     {
@@ -127,19 +103,13 @@ test("fixSpecRules adds rollback section to spec", async () => {
     },
   ];
 
-  const fixes = await fixSpecRules(filePath, issues);
-  assert.ok(Array.isArray(fixes) || typeof fixes === "object");
-
-  fs.rmSync(tempDir, { recursive: true, force: true });
+  const { content, fixes } = fixSpecRules(original, issues, "migration.md");
+  assert.ok(fixes.length > 0);
+  assert.match(content, /Rollback/);
 });
 
-test("fixToolRules adds weak schema descriptions", async () => {
-  const tempDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "agentlint-tool-schema-test-")
-  );
-  const filePath = path.join(tempDir, "schema.ts");
-  const content = `const schema = { type: "object", properties: {} };`;
-  fs.writeFileSync(filePath, content, "utf8");
+test("fixToolRules adds weak schema descriptions", () => {
+  const original = `const schema = { type: "object", properties: {} };`;
 
   const issues: AgentIssue[] = [
     {
@@ -152,8 +122,6 @@ test("fixToolRules adds weak schema descriptions", async () => {
     },
   ];
 
-  const fixes = await fixToolRules(filePath, issues);
-  assert.ok(Array.isArray(fixes) || typeof fixes === "object");
-
-  fs.rmSync(tempDir, { recursive: true, force: true });
+  const { fixes } = fixToolRules(original, issues, "schema.ts");
+  assert.ok(Array.isArray(fixes));
 });

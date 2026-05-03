@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import test from "node:test";
 
 import { checkCodeQualityRules } from "../src/scanners/rules/code-quality-lint.js";
 import { checkSecurityRules } from "../src/scanners/rules/security-lint.js";
+import { runASTAnalyzer } from "../src/scanners/ast-analyzer.js";
 import { loadConfig } from "../src/config.js";
 
 test("checkCodeQualityRules detects any type annotations", () => {
@@ -20,12 +24,20 @@ test("checkCodeQualityRules skips non-TS files", () => {
   assert.strictEqual(issues.length, 0);
 });
 
-test("checkCodeQualityRules respects off config", () => {
+test("orchestrator respects off config for code-quality-no-any", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "agentlint-cq-off-"));
+  fs.writeFileSync(path.join(tempDir, "test.ts"), "const x: any = {};", "utf8");
+
   const config = loadConfig(".");
   config.rules["code-quality-no-any"] = "off";
-  const issues = checkCodeQualityRules("test.ts", ["const x: any = {};"], config);
+  const issues = await runASTAnalyzer(tempDir, config);
 
-  assert.strictEqual(issues.length, 0);
+  assert.strictEqual(
+    issues.filter((i) => i.ruleId === "code-quality-no-any").length,
+    0,
+  );
+
+  fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
 test("checkSecurityRules detects secret leakage (OpenAI key)", () => {
@@ -44,13 +56,26 @@ test("checkSecurityRules detects secret leakage (Slack token)", () => {
   assert.ok(secretIssues.length > 0);
 });
 
-test("checkSecurityRules respects security-secret-leakage off config", () => {
+test("orchestrator respects security-secret-leakage off config", async () => {
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "agentlint-secret-off-"),
+  );
+  fs.writeFileSync(
+    path.join(tempDir, "config.ts"),
+    "const token = 'sk-abc123def456ghi789jkl012mnopqrst';",
+    "utf8",
+  );
+
   const config = loadConfig(".");
   config.rules["security-secret-leakage"] = "off";
-  const issues = checkSecurityRules("config.ts", ["const token = 'sk-abc123def456ghi789jkl012mnopqrst';"], config);
+  const issues = await runASTAnalyzer(tempDir, config);
 
-  const secretIssues = issues.filter((i) => i.ruleId === "security-secret-leakage");
-  assert.strictEqual(secretIssues.length, 0);
+  assert.strictEqual(
+    issues.filter((i) => i.ruleId === "security-secret-leakage").length,
+    0,
+  );
+
+  fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
 test("checkSecurityRules detects destructive action without confirmation", () => {

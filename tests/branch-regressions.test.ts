@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import test from "node:test";
 
 import { loadConfig } from "../src/config.js";
+import { runASTAnalyzer } from "../src/scanners/ast-analyzer.js";
 import { checkContextRules } from "../src/scanners/rules/context-lint.js";
 import { checkExecutionRules } from "../src/scanners/rules/execution-lint.js";
 import { checkSecurityRules } from "../src/scanners/rules/security-lint.js";
@@ -56,18 +60,28 @@ test("security rules accept approval guards", () => {
   );
 });
 
-test("security rules preserve configured warn severity", () => {
+test("orchestrator stamps configured warn severity for security-destructive-action", async () => {
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "agentlint-sev-override-"),
+  );
+  fs.writeFileSync(
+    path.join(tempDir, "file.ts"),
+    "fs.writeFileSync('/tmp/file', data);",
+    "utf8",
+  );
+
   const config = loadConfig(".");
   config.rules["security-destructive-action"] = "warn";
 
-  const issues = checkSecurityRules("file.ts", ["fs.writeFileSync('/tmp/file', data);"], config);
+  const issues = await runASTAnalyzer(tempDir, config);
   const destructiveIssue = issues.find(
     (issue) => issue.ruleId === "security-destructive-action",
   );
 
-  if (destructiveIssue) {
-    assert.strictEqual(destructiveIssue.severity, "warn");
-  }
+  assert.ok(destructiveIssue);
+  assert.strictEqual(destructiveIssue!.severity, "warn");
+
+  fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
 test("context rules accept runId and correlationId", () => {

@@ -1,17 +1,10 @@
 import assert from "node:assert/strict";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import test from "node:test";
 
 import { fixExecutionRules } from "../src/fixers/execution-fixer.js";
 import type { AgentIssue } from "../src/scanners/types.js";
 
-test("fixExecutionRules replaces all while(true) loops with bounded loops", async () => {
-  const tempDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "agentlint-exec-fixer-"),
-  );
-  const filePath = path.join(tempDir, "agent.ts");
+test("fixExecutionRules replaces all while(true) loops with bounded loops", () => {
   const original = [
     "function run() {",
     "  while (true) {",
@@ -22,8 +15,6 @@ test("fixExecutionRules replaces all while(true) loops with bounded loops", asyn
     "  }",
     "}",
   ].join("\n");
-
-  fs.writeFileSync(filePath, original, "utf8");
 
   const issues: AgentIssue[] = [
     {
@@ -37,24 +28,17 @@ test("fixExecutionRules replaces all while(true) loops with bounded loops", asyn
     },
   ];
 
-  const fixes = await fixExecutionRules(filePath, issues);
-  const updated = fs.readFileSync(filePath, "utf8");
+  const { content, fixes } = fixExecutionRules(original, issues, "agent.ts");
 
   assert.equal(fixes.length, 2);
-  assert.doesNotMatch(updated, /while\s*\(\s*true\s*\)/);
+  assert.doesNotMatch(content, /while\s*\(\s*true\s*\)/);
   assert.match(
-    updated,
+    content,
     /for \(let __agentStep = 0; __agentStep < 100; __agentStep\+\+\)/,
   );
-
-  fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-test("fixExecutionRules leaves file unchanged when rule issue is absent", async () => {
-  const tempDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "agentlint-exec-fixer-"),
-  );
-  const filePath = path.join(tempDir, "agent.ts");
+test("fixExecutionRules leaves file unchanged when rule issue is absent", () => {
   const original = [
     "function run() {",
     "  while (true) {",
@@ -62,8 +46,6 @@ test("fixExecutionRules leaves file unchanged when rule issue is absent", async 
     "  }",
     "}",
   ].join("\n");
-
-  fs.writeFileSync(filePath, original, "utf8");
 
   const issues: AgentIssue[] = [
     {
@@ -76,20 +58,13 @@ test("fixExecutionRules leaves file unchanged when rule issue is absent", async 
     },
   ];
 
-  const fixes = await fixExecutionRules(filePath, issues);
-  const updated = fs.readFileSync(filePath, "utf8");
+  const { content, fixes } = fixExecutionRules(original, issues, "agent.ts");
 
   assert.equal(fixes.length, 0);
-  assert.equal(updated, original);
-
-  fs.rmSync(tempDir, { recursive: true, force: true });
+  assert.equal(content, original);
 });
 
-test("fixExecutionRules injects dry-run guards for mutating calls", async () => {
-  const tempDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "agentlint-exec-fixer-"),
-  );
-  const filePath = path.join(tempDir, "runner.ts");
+test("fixExecutionRules injects dry-run guards for mutating calls", () => {
   const original = [
     'import * as fs from "fs";',
     "function run() {",
@@ -97,8 +72,6 @@ test("fixExecutionRules injects dry-run guards for mutating calls", async () => 
     "}",
   ].join("\n");
 
-  fs.writeFileSync(filePath, original, "utf8");
-
   const issues: AgentIssue[] = [
     {
       file: "runner.ts",
@@ -111,24 +84,17 @@ test("fixExecutionRules injects dry-run guards for mutating calls", async () => 
     },
   ];
 
-  const fixes = await fixExecutionRules(filePath, issues);
-  const updated = fs.readFileSync(filePath, "utf8");
+  const { content, fixes } = fixExecutionRules(original, issues, "runner.ts");
 
   assert.ok(fixes.length >= 2);
-  assert.match(updated, /const dryRun = process\.env\.DRY_RUN === "1";/);
+  assert.match(content, /const dryRun = process\.env\.DRY_RUN === "1";/);
   assert.match(
-    updated,
+    content,
     /if \(!dryRun\) fs\.writeFileSync\("x\.txt", "data"\);/,
   );
-
-  fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-test("fixExecutionRules skips dry-run injection when already present", async () => {
-  const tempDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "agentlint-exec-fixer-"),
-  );
-  const filePath = path.join(tempDir, "runner.ts");
+test("fixExecutionRules skips dry-run injection when already present", () => {
   const original = [
     'const dryRun = process.env.DRY_RUN === "1";',
     "function run() {",
@@ -136,8 +102,6 @@ test("fixExecutionRules skips dry-run injection when already present", async () 
     "}",
   ].join("\n");
 
-  fs.writeFileSync(filePath, original, "utf8");
-
   const issues: AgentIssue[] = [
     {
       file: "runner.ts",
@@ -150,20 +114,13 @@ test("fixExecutionRules skips dry-run injection when already present", async () 
     },
   ];
 
-  const fixes = await fixExecutionRules(filePath, issues);
-  const updated = fs.readFileSync(filePath, "utf8");
+  const { content, fixes } = fixExecutionRules(original, issues, "runner.ts");
 
   assert.equal(fixes.length, 0);
-  assert.equal(updated, original);
-
-  fs.rmSync(tempDir, { recursive: true, force: true });
+  assert.equal(content, original);
 });
 
-test("fixExecutionRules does not wrap multi-line mutation calls (avoids broken syntax)", async () => {
-  const tempDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "agentlint-dryrun-multiline-")
-  );
-  const filePath = path.join(tempDir, "tools.ts");
+test("fixExecutionRules does not wrap multi-line mutation calls (avoids broken syntax)", () => {
   const original = [
     "function run() {",
     "  db.insert({",
@@ -172,28 +129,25 @@ test("fixExecutionRules does not wrap multi-line mutation calls (avoids broken s
     "  });",
     "}",
   ].join("\n");
-  fs.writeFileSync(filePath, original, "utf8");
 
   const issues: AgentIssue[] = [
     {
       file: "tools.ts",
       line: 1,
-      message: "Mutating execution paths found without a dry-run or simulation mode.",
+      message:
+        "Mutating execution paths found without a dry-run or simulation mode.",
       ruleId: "execution-no-dry-run",
       severity: "error",
       category: "Execution Safety",
     },
   ];
 
-  await fixExecutionRules(filePath, issues);
-  const updated = fs.readFileSync(filePath, "utf8");
+  const { content } = fixExecutionRules(original, issues, "tools.ts");
 
   // The dryRun helper is added at the top
-  assert.match(updated, /const dryRun = process\.env\.DRY_RUN/);
+  assert.match(content, /const dryRun = process\.env\.DRY_RUN/);
   // But the multi-line db.insert is left untouched (the line "  db.insert({"
   // would otherwise be wrapped, breaking the call)
-  assert.match(updated, /^\s+db\.insert\(\{/m);
-  assert.doesNotMatch(updated, /if \(!dryRun\) db\.insert\(\{/);
-
-  fs.rmSync(tempDir, { recursive: true, force: true });
+  assert.match(content, /^\s+db\.insert\(\{/m);
+  assert.doesNotMatch(content, /if \(!dryRun\) db\.insert\(\{/);
 });
