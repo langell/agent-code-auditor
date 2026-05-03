@@ -6,6 +6,7 @@ import { AgentLintConfig } from "../config.js";
 import { AgentIssue, ToolDeclaration } from "./types.js";
 import { registry } from "../rules/index.js";
 import { RuleContext } from "../rules/types.js";
+import { loadCustomRules, mergeRules } from "../load-custom-rules.js";
 
 function isSourceFile(filePath: string): boolean {
   return /\.(?:ts|tsx|js|jsx|mts|cts|mjs|cjs)$/.test(filePath);
@@ -50,6 +51,12 @@ export async function runASTAnalyzer(
     ignore: ["node_modules/**", "dist/**"],
   });
 
+  // Resolve the effective rule set (built-in + any user-registered custom
+  // rules from `customRules` in .agentlintrc.json). Custom rules with the
+  // same id as a built-in shadow it.
+  const customRules = await loadCustomRules(dir, config);
+  const effectiveRules = mergeRules(registry, customRules);
+
   // Cross-file accumulator for tool-overlapping. Threaded through every
   // RuleContext so the tool family Rule can populate it and the post-loop
   // overlap aggregator below can read it.
@@ -76,7 +83,7 @@ export async function runASTAnalyzer(
       globalTools,
     };
 
-    for (const rule of registry) {
+    for (const rule of effectiveRules) {
       if (rule.appliesTo === "source" && !fileIsSource) {
         continue;
       }
