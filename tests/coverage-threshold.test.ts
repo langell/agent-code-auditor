@@ -271,29 +271,25 @@ test("fixContextRules injects traceId via AST positions", async () => {
 
   const config = loadConfig(".");
   const issues = await runASTAnalyzer(tempDir, config);
-  const traceIssues = issues
-    .filter((i) => i.ruleId === "observability-missing-trace-id")
-    .map((i) => ({ ...i, file: filePath }));
+  const traceIssues = issues.filter(
+    (i) => i.ruleId === "observability-missing-trace-id",
+  );
 
   assert.ok(traceIssues.length > 0);
   assert.ok(traceIssues[0].startPos !== undefined);
 
-  const fixes = await fixContextRules(filePath, traceIssues);
+  const { content, fixes } = fixContextRules(original, traceIssues, filePath);
   assert.ok(fixes.length > 0);
-  const updated = fs.readFileSync(filePath, "utf8");
-  assert.match(updated, /traceId/);
+  assert.match(content, /traceId/);
 
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-test("fixContextRules injects traceId via AST positions with empty Agent()", async () => {
-  const tempDir = makeTempDir("agentlint-context-ast-empty-");
-  const filePath = path.join(tempDir, "agent.ts");
+test("fixContextRules injects traceId via AST positions with empty Agent()", () => {
   const original = "const agent = new Agent();\n";
-  fs.writeFileSync(filePath, original, "utf8");
 
   const issue: AgentIssue = {
-    file: filePath,
+    file: "agent.ts",
     line: 1,
     message: "missing trace",
     ruleId: "observability-missing-trace-id",
@@ -303,12 +299,9 @@ test("fixContextRules injects traceId via AST positions with empty Agent()", asy
     endPos: original.indexOf("new Agent()") + "new Agent()".length,
   };
 
-  const fixes = await fixContextRules(filePath, [issue]);
+  const { content, fixes } = fixContextRules(original, [issue], "agent.ts");
   assert.ok(fixes.length > 0);
-  const updated = fs.readFileSync(filePath, "utf8");
-  assert.match(updated, /traceId/);
-
-  fs.rmSync(tempDir, { recursive: true, force: true });
+  assert.match(content, /traceId/);
 });
 
 test("fixSecurityRules adds validate() guard via AST positions for api files", async () => {
@@ -326,18 +319,21 @@ test("fixSecurityRules adds validate() guard via AST positions for api files", a
 
   const config = loadConfig(".");
   const issues = await runASTAnalyzer(tempDir, config);
-  const inputValidationIssues = issues
-    .filter((i) => i.ruleId === "security-input-validation")
-    .map((i) => ({ ...i, file: filePath }));
+  const inputValidationIssues = issues.filter(
+    (i) => i.ruleId === "security-input-validation",
+  );
 
   assert.ok(inputValidationIssues.length > 0);
   assert.ok(inputValidationIssues[0].startPos !== undefined);
 
-  const fixes = await fixSecurityRules(filePath, inputValidationIssues);
+  const { content, fixes } = fixSecurityRules(
+    original,
+    inputValidationIssues,
+    filePath,
+  );
   assert.ok(fixes.length > 0);
-  const updated = fs.readFileSync(filePath, "utf8");
-  assert.match(updated, /function validate\(input: unknown\)/);
-  assert.match(updated, /validate\(/);
+  assert.match(content, /function validate\(input: unknown\)/);
+  assert.match(content, /validate\(/);
 
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
@@ -357,32 +353,32 @@ test("fixExecutionRules bounds while(true) via AST positions", async () => {
 
   const config = loadConfig(".");
   const issues = await runASTAnalyzer(tempDir, config);
-  const maxStepIssues = issues
-    .filter((i) => i.ruleId === "execution-missing-max-steps")
-    .map((i) => ({ ...i, file: filePath }));
+  const maxStepIssues = issues.filter(
+    (i) => i.ruleId === "execution-missing-max-steps",
+  );
 
   assert.ok(maxStepIssues.length > 0);
 
-  const fixes = await fixExecutionRules(filePath, maxStepIssues);
+  const { content, fixes } = fixExecutionRules(
+    original,
+    maxStepIssues,
+    filePath,
+  );
   assert.ok(fixes.length > 0);
-  const updated = fs.readFileSync(filePath, "utf8");
-  assert.match(updated, /__agentStep/);
+  assert.match(content, /__agentStep/);
 
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-test("fixExecutionRules avoids reusing existing __agentStep loop var", async () => {
-  const tempDir = makeTempDir("agentlint-exec-collision-");
-  const filePath = path.join(tempDir, "loop.ts");
+test("fixExecutionRules avoids reusing existing __agentStep loop var", () => {
   const original = [
     "const __agentStep = 0;",
     "while (true) { run(); }",
     "",
   ].join("\n");
-  fs.writeFileSync(filePath, original, "utf8");
 
   const issue: AgentIssue = {
-    file: filePath,
+    file: "loop.ts",
     line: 2,
     message: "while true",
     ruleId: "execution-missing-max-steps",
@@ -390,27 +386,21 @@ test("fixExecutionRules avoids reusing existing __agentStep loop var", async () 
     category: "Execution",
   };
 
-  const fixes = await fixExecutionRules(filePath, [issue]);
+  const { content, fixes } = fixExecutionRules(original, [issue], "loop.ts");
   assert.ok(fixes.length > 0);
-  const updated = fs.readFileSync(filePath, "utf8");
-  assert.match(updated, /__agentStep1/);
-
-  fs.rmSync(tempDir, { recursive: true, force: true });
+  assert.match(content, /__agentStep1/);
 });
 
-test("fixToolRules expands empty properties and appends examples", async () => {
-  const tempDir = makeTempDir("agentlint-tool-fix-paths-");
-  const filePath = path.join(tempDir, "tool.ts");
+test("fixToolRules expands empty properties and appends examples", () => {
   const original = [
     'const a = { type: "object", properties: {} };',
     'const b = { type: "object", properties: { id: { type: "number" } } };',
     "",
   ].join("\n");
-  fs.writeFileSync(filePath, original, "utf8");
 
   const issues: AgentIssue[] = [
     {
-      file: filePath,
+      file: "tool.ts",
       line: 1,
       message: "weak",
       ruleId: "tool-weak-schema",
@@ -418,7 +408,7 @@ test("fixToolRules expands empty properties and appends examples", async () => {
       category: "Tool",
     },
     {
-      file: filePath,
+      file: "tool.ts",
       line: 2,
       message: "weak",
       ruleId: "tool-weak-schema",
@@ -426,7 +416,7 @@ test("fixToolRules expands empty properties and appends examples", async () => {
       category: "Tool",
     },
     {
-      file: filePath,
+      file: "tool.ts",
       line: 1,
       message: "examples",
       ruleId: "tool-missing-examples",
@@ -435,20 +425,15 @@ test("fixToolRules expands empty properties and appends examples", async () => {
     },
   ];
 
-  const fixes = await fixToolRules(filePath, issues);
+  const { content, fixes } = fixToolRules(original, issues, "tool.ts");
   assert.ok(fixes.length >= 2);
 
-  const updated = fs.readFileSync(filePath, "utf8");
-  assert.match(updated, /TBD: describe this parameter/);
-  assert.match(updated, /TBD: expand property descriptions/);
-  assert.match(updated, /TBD: valid example/);
-
-  fs.rmSync(tempDir, { recursive: true, force: true });
+  assert.match(content, /TBD: describe this parameter/);
+  assert.match(content, /TBD: expand property descriptions/);
+  assert.match(content, /TBD: valid example/);
 });
 
-test("fixSpecRules replaces placeholder TODO comments with hard-fail throws", async () => {
-  const tempDir = makeTempDir("agentlint-spec-fix-placeholder-");
-  const filePath = path.join(tempDir, "src.ts");
+test("fixSpecRules replaces placeholder TODO comments with hard-fail throws", () => {
   const original = [
     "function run() {",
     "  // TODO: implement run logic",
@@ -456,11 +441,10 @@ test("fixSpecRules replaces placeholder TODO comments with hard-fail throws", as
     "}",
     "",
   ].join("\n");
-  fs.writeFileSync(filePath, original, "utf8");
 
   const issues: AgentIssue[] = [
     {
-      file: filePath,
+      file: "src.ts",
       line: 2,
       message: "placeholder",
       ruleId: "no-placeholder-comments",
@@ -469,27 +453,21 @@ test("fixSpecRules replaces placeholder TODO comments with hard-fail throws", as
     },
   ];
 
-  const fixes = await fixSpecRules(filePath, issues);
+  const { content, fixes } = fixSpecRules(original, issues, "src.ts");
   assert.ok(fixes.length > 0);
-  const updated = fs.readFileSync(filePath, "utf8");
-  assert.match(updated, /Not implemented - AI placeholder detected/);
-
-  fs.rmSync(tempDir, { recursive: true, force: true });
+  assert.match(content, /Not implemented - AI placeholder detected/);
 });
 
-test("fixCodeQualityRules replaces any usages via line-only issues", async () => {
-  const tempDir = makeTempDir("agentlint-cq-line-only-");
-  const filePath = path.join(tempDir, "lines.ts");
+test("fixCodeQualityRules replaces any usages via line-only issues", () => {
   const original = [
     "let v: any = 0;",
     "let w = x as any;",
     "let r = <any>y;",
     "",
   ].join("\n");
-  fs.writeFileSync(filePath, original, "utf8");
 
   const issues: AgentIssue[] = [1, 2, 3].map((line) => ({
-    file: filePath,
+    file: "lines.ts",
     line,
     message: "any",
     ruleId: "code-quality-no-any",
@@ -497,13 +475,9 @@ test("fixCodeQualityRules replaces any usages via line-only issues", async () =>
     category: "Code Quality",
   }));
 
-  const fixes = await fixCodeQualityRules(filePath, issues);
+  const { content, fixes } = fixCodeQualityRules(original, issues, "lines.ts");
   assert.equal(fixes.length, 3);
-
-  const updated = fs.readFileSync(filePath, "utf8");
-  assert.doesNotMatch(updated, /\bany\b/);
-
-  fs.rmSync(tempDir, { recursive: true, force: true });
+  assert.doesNotMatch(content, /\bany\b/);
 });
 
 test("vulnerability scanner parses object-shape vulnerabilities entries", async () => {
@@ -526,15 +500,12 @@ test("vulnerability scanner parses object-shape vulnerabilities entries", async 
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-test("fixSpecRules leaves inline TODO comments alone (avoids breaking syntax)", async () => {
-  const tempDir = makeTempDir("agentlint-spec-inline-todo-");
-  const filePath = path.join(tempDir, "logic.ts");
+test("fixSpecRules leaves inline TODO comments alone (avoids breaking syntax)", () => {
   const original = [
     "const value = compute(); // TODO: implement caching",
     "return value;",
     "",
   ].join("\n");
-  fs.writeFileSync(filePath, original, "utf8");
 
   const issues: AgentIssue[] = [
     {
@@ -547,11 +518,10 @@ test("fixSpecRules leaves inline TODO comments alone (avoids breaking syntax)", 
     },
   ];
 
-  await fixSpecRules(filePath, issues);
-  const updated = fs.readFileSync(filePath, "utf8");
+  const { content } = fixSpecRules(original, issues, "logic.ts");
 
   // Inline trailing TODO must not be rewritten — would corrupt the statement
-  assert.equal(updated, original);
+  assert.equal(content, original);
 });
 
 import { checkVerificationRules } from "../src/scanners/rules/verification-lint.js";

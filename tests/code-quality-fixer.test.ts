@@ -1,15 +1,10 @@
 import assert from "node:assert/strict";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import test from "node:test";
 
 import { fixCodeQualityRules } from "../src/fixers/code-quality-fixer.js";
 import type { AgentIssue } from "../src/scanners/types.js";
 
-test("fixCodeQualityRules replaces any patterns for code-quality-no-any", async () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "agentlint-cq-fixer-"));
-  const filePath = path.join(tempDir, "sample.ts");
+test("fixCodeQualityRules replaces any patterns for code-quality-no-any", () => {
   const original = [
     "const a: any = {};",
     "const b = value as any;",
@@ -17,53 +12,26 @@ test("fixCodeQualityRules replaces any patterns for code-quality-no-any", async 
     "const d = 1;",
   ].join("\n");
 
-  fs.writeFileSync(filePath, original, "utf8");
+  const issues: AgentIssue[] = [1, 2, 3].map((line) => ({
+    file: "sample.ts",
+    line,
+    message: "Use of 'any' type detected.",
+    ruleId: "code-quality-no-any",
+    severity: "error",
+    category: "Code Quality",
+  }));
 
-  const issues: AgentIssue[] = [
-    {
-      file: "sample.ts",
-      line: 1,
-      message: "Use of 'any' type detected.",
-      ruleId: "code-quality-no-any",
-      severity: "error",
-      category: "Code Quality",
-    },
-    {
-      file: "sample.ts",
-      line: 2,
-      message: "Use of 'any' type detected.",
-      ruleId: "code-quality-no-any",
-      severity: "error",
-      category: "Code Quality",
-    },
-    {
-      file: "sample.ts",
-      line: 3,
-      message: "Use of 'any' type detected.",
-      ruleId: "code-quality-no-any",
-      severity: "error",
-      category: "Code Quality",
-    },
-  ];
-
-  const fixes = await fixCodeQualityRules(filePath, issues);
-  const updated = fs.readFileSync(filePath, "utf8");
+  const { content, fixes } = fixCodeQualityRules(original, issues, "sample.ts");
 
   assert.equal(fixes.length, 3);
-  assert.match(updated, /const a: unknown = \{\};/);
-  assert.match(updated, /const b = value as unknown;/);
-  assert.match(updated, /const c = <unknown>value;/);
-  assert.match(updated, /const d = 1;/);
-
-  fs.rmSync(tempDir, { recursive: true, force: true });
+  assert.match(content, /const a: unknown = \{\};/);
+  assert.match(content, /const b = value as unknown;/);
+  assert.match(content, /const c = <unknown>value;/);
+  assert.match(content, /const d = 1;/);
 });
 
-test("fixCodeQualityRules skips when no matching rule issues are provided", async () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "agentlint-cq-fixer-"));
-  const filePath = path.join(tempDir, "sample.ts");
+test("fixCodeQualityRules skips when no matching rule issues are provided", () => {
   const original = "const a: any = {}";
-
-  fs.writeFileSync(filePath, original, "utf8");
 
   const issues: AgentIssue[] = [
     {
@@ -76,30 +44,22 @@ test("fixCodeQualityRules skips when no matching rule issues are provided", asyn
     },
   ];
 
-  const fixes = await fixCodeQualityRules(filePath, issues);
-  const updated = fs.readFileSync(filePath, "utf8");
+  const { content, fixes } = fixCodeQualityRules(original, issues, "sample.ts");
 
   assert.equal(fixes.length, 0);
-  assert.equal(updated, original);
-
-  fs.rmSync(tempDir, { recursive: true, force: true });
+  assert.equal(content, original);
 });
 
-test("fixCodeQualityRules skips lines containing strings or comments", async () => {
-  const tempDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "agentlint-cq-string-comment-")
-  );
-  const filePath = path.join(tempDir, "mixed.ts");
+test("fixCodeQualityRules skips lines containing strings or comments", () => {
   const original = [
     `const msg = "type: any inside string";`,
     `// example: any here in a comment`,
     `const x: any = 1;`,
     ``,
   ].join("\n");
-  fs.writeFileSync(filePath, original, "utf8");
 
   const issues: AgentIssue[] = [1, 2, 3].map((line) => ({
-    file: filePath,
+    file: "mixed.ts",
     line,
     message: "any",
     ruleId: "code-quality-no-any",
@@ -107,14 +67,11 @@ test("fixCodeQualityRules skips lines containing strings or comments", async () 
     category: "Code Quality",
   }));
 
-  const fixes = await fixCodeQualityRules(filePath, issues);
-  const updated = fs.readFileSync(filePath, "utf8");
+  const { content, fixes } = fixCodeQualityRules(original, issues, "mixed.ts");
 
   // Only the bare `const x: any = 1` line is rewritten
   assert.equal(fixes.length, 1);
-  assert.match(updated, /type:\s*any inside string/);
-  assert.match(updated, /\/\/ example:\s*any here in a comment/);
-  assert.match(updated, /const x:\s*unknown\s*=\s*1/);
-
-  fs.rmSync(tempDir, { recursive: true, force: true });
+  assert.match(content, /type:\s*any inside string/);
+  assert.match(content, /\/\/ example:\s*any here in a comment/);
+  assert.match(content, /const x:\s*unknown\s*=\s*1/);
 });
