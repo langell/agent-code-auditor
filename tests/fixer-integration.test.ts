@@ -1,33 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { fixSecurityRules } from "../src/fixers/security-fixer.js";
-import { fixSpecRules } from "../src/fixers/spec-fixer.js";
-import { fixToolRules } from "../src/fixers/tool-fixer.js";
+import { specMissingAcceptanceCriteriaRule } from "../src/rules/spec-missing-acceptance-criteria.js";
+import { specMissingRollbackRule } from "../src/rules/spec-missing-rollback.js";
+import { toolOverlappingRule } from "../src/rules/tool-overlapping.js";
+import { toolWeakSchemaRule } from "../src/rules/tool-weak-schema.js";
+import { securityPromptInjectionRule } from "../src/rules/security-prompt-injection.js";
 import type { AgentIssue } from "../src/scanners/types.js";
 
-test("fixSecurityRules accepts empty content with prompt-injection issue", () => {
-  const issues: AgentIssue[] = [
-    {
-      file: "agent.ts",
-      line: 1,
-      message: "Potential prompt injection",
-      ruleId: "security-prompt-injection",
-      severity: "error",
-      category: "Security",
-    },
-  ];
-
-  const outcome = fixSecurityRules(
-    "const prompt = `User said: ${toolOutput}`;",
-    issues,
-    "agent.ts",
-  );
-  assert.ok(typeof outcome.content === "string");
-  assert.ok(Array.isArray(outcome.fixes));
+test("security-prompt-injection has no applyFix (detection-only rule)", () => {
+  // Sanity check: this rule emits issues but has no fixer; verifies the
+  // optional-applyFix design holds up.
+  assert.equal(typeof securityPromptInjectionRule.applyFix, "undefined");
 });
 
-test("fixSpecRules adds acceptance criteria to spec", () => {
+test("specMissingAcceptanceCriteriaRule.applyFix appends acceptance criteria", () => {
   const original = "# Task\nBuild a feature";
 
   const issues: AgentIssue[] = [
@@ -41,12 +28,16 @@ test("fixSpecRules adds acceptance criteria to spec", () => {
     },
   ];
 
-  const { content, fixes } = fixSpecRules(original, issues, "task.md");
+  const { content, fixes } = specMissingAcceptanceCriteriaRule.applyFix!(
+    original,
+    issues,
+    "task.md",
+  );
   assert.ok(fixes.length > 0);
   assert.match(content, /Acceptance Criteria/);
 });
 
-test("fixToolRules removes duplicate tool names", () => {
+test("toolOverlappingRule.applyFix renames duplicate tool names", () => {
   const original = `
 const tools = [
   { name: "getData", description: "first" },
@@ -65,31 +56,15 @@ const tools = [
     },
   ];
 
-  const { fixes } = fixToolRules(original, issues, "tools.ts");
+  const { fixes } = toolOverlappingRule.applyFix!(
+    original,
+    issues,
+    "tools.ts",
+  );
   assert.ok(Array.isArray(fixes));
 });
 
-test("fixSecurityRules returns empty fixes when content has no matching patterns", () => {
-  const issues: AgentIssue[] = [
-    {
-      file: "agent.ts",
-      line: 1,
-      message: "Test issue",
-      ruleId: "security-prompt-injection",
-      severity: "error",
-      category: "Security",
-    },
-  ];
-
-  const { fixes } = fixSecurityRules(
-    "const x = 1;",
-    issues,
-    "agent.ts",
-  );
-  assert.equal(fixes.length, 0);
-});
-
-test("fixSpecRules adds rollback section to spec", () => {
+test("specMissingRollbackRule.applyFix appends rollback section", () => {
   const original = "# Migration Task\nMigrate user data";
 
   const issues: AgentIssue[] = [
@@ -103,12 +78,16 @@ test("fixSpecRules adds rollback section to spec", () => {
     },
   ];
 
-  const { content, fixes } = fixSpecRules(original, issues, "migration.md");
+  const { content, fixes } = specMissingRollbackRule.applyFix!(
+    original,
+    issues,
+    "migration.md",
+  );
   assert.ok(fixes.length > 0);
   assert.match(content, /Rollback/);
 });
 
-test("fixToolRules adds weak schema descriptions", () => {
+test("toolWeakSchemaRule.applyFix injects description on weak schema", () => {
   const original = `const schema = { type: "object", properties: {} };`;
 
   const issues: AgentIssue[] = [
@@ -122,6 +101,10 @@ test("fixToolRules adds weak schema descriptions", () => {
     },
   ];
 
-  const { fixes } = fixToolRules(original, issues, "schema.ts");
+  const { fixes } = toolWeakSchemaRule.applyFix!(
+    original,
+    issues,
+    "schema.ts",
+  );
   assert.ok(Array.isArray(fixes));
 });

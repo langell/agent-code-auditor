@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { fixCodeQualityRules } from "../src/fixers/code-quality-fixer.js";
+import { codeQualityNoAnyRule } from "../src/rules/code-quality-no-any.js";
 import type { AgentIssue } from "../src/scanners/types.js";
 
-test("fixCodeQualityRules replaces any patterns for code-quality-no-any", () => {
+test("codeQualityNoAnyRule.applyFix replaces any patterns", () => {
   const original = [
     "const a: any = {};",
     "const b = value as any;",
@@ -21,7 +21,11 @@ test("fixCodeQualityRules replaces any patterns for code-quality-no-any", () => 
     category: "Code Quality",
   }));
 
-  const { content, fixes } = fixCodeQualityRules(original, issues, "sample.ts");
+  const { content, fixes } = codeQualityNoAnyRule.applyFix!(
+    original,
+    issues,
+    "sample.ts",
+  );
 
   assert.equal(fixes.length, 3);
   assert.match(content, /const a: unknown = \{\};/);
@@ -30,7 +34,7 @@ test("fixCodeQualityRules replaces any patterns for code-quality-no-any", () => 
   assert.match(content, /const d = 1;/);
 });
 
-test("fixCodeQualityRules skips when no matching rule issues are provided", () => {
+test("codeQualityNoAnyRule.applyFix is a no-op when no matching issues", () => {
   const original = "const a: any = {}";
 
   const issues: AgentIssue[] = [
@@ -44,13 +48,17 @@ test("fixCodeQualityRules skips when no matching rule issues are provided", () =
     },
   ];
 
-  const { content, fixes } = fixCodeQualityRules(original, issues, "sample.ts");
+  const { content, fixes } = codeQualityNoAnyRule.applyFix!(
+    original,
+    issues,
+    "sample.ts",
+  );
 
   assert.equal(fixes.length, 0);
   assert.equal(content, original);
 });
 
-test("fixCodeQualityRules skips lines containing strings or comments", () => {
+test("codeQualityNoAnyRule.applyFix skips lines containing strings or comments", () => {
   const original = [
     `const msg = "type: any inside string";`,
     `// example: any here in a comment`,
@@ -67,7 +75,11 @@ test("fixCodeQualityRules skips lines containing strings or comments", () => {
     category: "Code Quality",
   }));
 
-  const { content, fixes } = fixCodeQualityRules(original, issues, "mixed.ts");
+  const { content, fixes } = codeQualityNoAnyRule.applyFix!(
+    original,
+    issues,
+    "mixed.ts",
+  );
 
   // Only the bare `const x: any = 1` line is rewritten
   assert.equal(fixes.length, 1);

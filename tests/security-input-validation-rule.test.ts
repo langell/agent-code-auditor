@@ -1,21 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import * as ts from "typescript";
 
-import { loadConfig } from "../src/config.js";
-import { checkSecurityRules } from "../src/scanners/rules/security-lint.js";
+import { securityInputValidationRule } from "../src/rules/security-input-validation.js";
+import { buildCtx } from "./_helpers.js";
 
 function lint(file: string, content: string) {
-  const config = loadConfig(".");
-  const sourceFile = ts.createSourceFile(
-    file,
-    content,
-    ts.ScriptTarget.Latest,
-    true,
-  );
-  return checkSecurityRules(file, content.split("\n"), config, sourceFile).filter(
-    (i) => i.ruleId === "security-input-validation",
-  );
+  return securityInputValidationRule.check(buildCtx(file, content, true));
 }
 
 // === True positives ===

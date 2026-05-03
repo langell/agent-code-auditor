@@ -5,7 +5,7 @@ import * as path from "node:path";
 import test from "node:test";
 
 import { loadConfig } from "../src/config.js";
-import { runFixer } from "../src/fixers/index.js";
+import { runFixer } from "../src/fix-orchestrator.js";
 import { runASTAnalyzer } from "../src/scanners/ast-analyzer.js";
 import { runLinter } from "../src/scanners/linter.js";
 import { runVulnerabilityScanner } from "../src/scanners/vulnerabilities.js";

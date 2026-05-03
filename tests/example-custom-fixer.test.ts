@@ -5,7 +5,7 @@ import * as path from "node:path";
 import test from "node:test";
 
 import { loadConfig } from "../src/config.js";
-import { runFixer } from "../src/fixers/index.js";
+import { runFixer } from "../src/fix-orchestrator.js";
 import type { AgentIssue } from "../src/scanners/types.js";
 
 const EXAMPLE_DIR = path.resolve("examples/custom-fixers");
