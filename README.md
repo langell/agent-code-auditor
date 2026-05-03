@@ -68,19 +68,26 @@ Example `.agentlintrc.json`:
   "skipRules": ["code-quality-no-any", "tool-overlapping"],
   "rules": {
     "security-input-validation": "error",
-    "spec-missing-rollback": "off"
+    "spec-missing-rollback": "off",
+    "no-console-log": "warn"
   },
   "fixers": {
     "code-quality-no-any": "./agentlint-fixers/custom-no-any-fixer.mjs#CustomNoAnyFixer"
-  }
+  },
+  "customRules": [
+    "./agentlint-rules/no-console-log.mjs#noConsoleLogRule"
+  ]
 }
 ```
 
 - `skipRules`: list of rule IDs to disable without setting each rule to `off`.
-- `rules`: rule severity overrides (`error`, `warn`, `off`).
+- `rules`: rule severity overrides (`error`, `warn`, `off`). Works for both built-in and custom rule IDs.
 - `fixers`: map of `ruleId` to a custom fixer class module reference.
   - String format: `./relative/path/to/module.mjs#ExportedClassName`
   - Object form: `{ "path": "./module.mjs", "exportName": "ExportedClassName" }`
+- `customRules`: array of module references that export a `Rule` object. Loaded at startup and merged into the built-in registry.
+  - String format: `./relative/path/to/module.mjs#exportedRuleName`
+  - Object form: `{ "path": "./module.mjs", "exportName": "exportedRuleName" }`
 
 ### Custom fixer contract
 
@@ -127,6 +134,58 @@ A working example lives in
 > **Breaking change in 2.x**: pre-refactor custom fixers used
 > `fix(filePath, issues): FixResult[]` and did their own file I/O. The
 > new contract above is required.
+
+### Custom rule contract
+
+A custom rule is a plain object that matches the same shape as built-in
+rules. The orchestrator handles config (severity overrides, `"off"`
+filtering) and I/O — your rule emits issues at its own default severity
+and (optionally) provides an `applyFix` for `agentlint fix`.
+
+```js
+// my-rule.mjs
+export const myRule = {
+  id: "my-rule",
+  appliesTo: "source", // or "all" to also scan .md / .prompt
+  check(ctx) {
+    // ctx: { filePath, content, lines, ast?, targetDir, globalTools }
+    const issues = [];
+    if (ctx.content.includes("badPattern")) {
+      issues.push({
+        file: ctx.filePath,
+        line: 1,
+        message: "Don't use badPattern.",
+        ruleId: "my-rule",
+        severity: "warn",
+        category: "Code Quality",
+      });
+    }
+    return issues;
+  },
+  // Optional — implement to make the rule auto-fixable.
+  applyFix(content, issues, filePath) {
+    return {
+      content: content.replace(/badPattern/g, "goodPattern"),
+      fixes: issues.map((i) => ({
+        fixed: true,
+        ruleId: "my-rule",
+        message: "Replaced badPattern with goodPattern.",
+      })),
+    };
+  },
+};
+```
+
+Contract:
+
+- Named OR default export of a `Rule`-shaped object. No `new`; the object is used directly.
+- Required fields: `id` (string), `appliesTo` (`"all"` or `"source"`), `check(ctx) → Issue[]`.
+- `applyFix(content, issues, filePath) → FixOutcome` is optional. Same `FixOutcome` shape as custom fixers.
+- If a custom rule's `id` matches a built-in's, the custom rule **shadows** the built-in (a warning is logged at load time so you know it's overriding).
+- If module load fails or the export isn't a valid Rule shape, the rule is skipped with a warning — one bad entry never aborts the run.
+
+A working example lives in
+[`examples/custom-rules/no-console-log.mjs`](examples/custom-rules/no-console-log.mjs).
 
 ## Commands
 

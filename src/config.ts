@@ -10,9 +10,21 @@ export interface CustomFixerReference {
 
 type CustomFixerConfigValue = string | CustomFixerReference;
 
+export interface CustomRuleReference {
+  path: string;
+  exportName?: string;
+}
+
+export type CustomRuleConfigValue = string | CustomRuleReference;
+
 export interface AgentLintConfig {
   skipRules?: string[];
   fixers?: Record<string, CustomFixerConfigValue>;
+  // List of module references that export a Rule object. Loaded by both
+  // orchestrators at startup and merged into the registry. If a custom Rule's
+  // `id` matches a built-in or a previously-loaded custom Rule, the latest
+  // loaded wins with a warning logged. See README "Custom rules".
+  customRules?: CustomRuleConfigValue[];
   rules: {
     "no-placeholder-comments"?: RuleLevel;
     "no-insecure-renders"?: RuleLevel;
@@ -86,6 +98,18 @@ export function loadConfig(targetDir: string): AgentLintConfig {
           ? (userConfig.fixers as Record<string, CustomFixerConfigValue>)
           : {};
 
+      const customRules: CustomRuleConfigValue[] = Array.isArray(
+        userConfig.customRules,
+      )
+        ? userConfig.customRules.filter(
+            (entry: unknown): entry is CustomRuleConfigValue =>
+              typeof entry === "string" ||
+              (typeof entry === "object" &&
+                entry !== null &&
+                typeof (entry as { path?: unknown }).path === "string"),
+          )
+        : [];
+
       const mergedRules = {
         ...defaultConfig.rules,
         ...(userConfig.rules || {}),
@@ -100,6 +124,7 @@ export function loadConfig(targetDir: string): AgentLintConfig {
         ...userConfig,
         skipRules,
         fixers,
+        customRules,
         rules: mergedRules,
       };
     } catch {
