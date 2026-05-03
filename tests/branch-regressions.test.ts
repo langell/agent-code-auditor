@@ -6,58 +6,53 @@ import test from "node:test";
 
 import { loadConfig } from "../src/config.js";
 import { runASTAnalyzer } from "../src/scanners/ast-analyzer.js";
-import { checkContextRules } from "../src/scanners/rules/context-lint.js";
-import { checkExecutionRules } from "../src/scanners/rules/execution-lint.js";
-import { checkSecurityRules } from "../src/scanners/rules/security-lint.js";
-import { checkToolRules } from "../src/scanners/rules/tool-lint.js";
+import { observabilityMissingTraceIdRule } from "../src/rules/observability-missing-trace-id.js";
+import { executionMissingMaxStepsRule } from "../src/rules/execution-missing-max-steps.js";
+import { architectureAtomicTransactionsRule } from "../src/rules/architecture-atomic-transactions.js";
+import { securityDestructiveActionRule } from "../src/rules/security-destructive-action.js";
+import { toolOverlappingRule } from "../src/rules/tool-overlapping.js";
+import { toolWeakSchemaRule } from "../src/rules/tool-weak-schema.js";
+import { buildCtx } from "./_helpers.js";
 
-test("execution rules accept maxIterations guards", () => {
-  const config = loadConfig(".");
-  const lines = [
+test("executionMissingMaxStepsRule accepts maxIterations guards", () => {
+  const content = [
     "let maxIterations = 50;",
     "while (true) {",
     "  if (count >= maxIterations) break;",
     "  count++;",
     "}",
-  ];
+  ].join("\n");
 
-  const issues = checkExecutionRules("loop.ts", lines, config);
-  assert.strictEqual(
-    issues.some((issue) => issue.ruleId === "execution-missing-max-steps"),
-    false,
-  );
+  const issues = executionMissingMaxStepsRule.check(buildCtx("loop.ts", content));
+  assert.strictEqual(issues.length, 0);
 });
 
-test("execution rules accept explicit transactions", () => {
-  const config = loadConfig(".");
-  const lines = [
+test("architectureAtomicTransactionsRule accepts explicit transactions", () => {
+  const content = [
     "db.transaction(() => {",
     "  db.insert({ data: 1 });",
     "  db.delete({ id: 1 });",
     "  db.update({ id: 2, name: 'new' });",
     "});",
-  ];
+  ].join("\n");
 
-  const issues = checkExecutionRules("transaction.ts", lines, config);
-  assert.strictEqual(
-    issues.some((issue) => issue.ruleId === "architecture-atomic-transactions"),
-    false,
+  const issues = architectureAtomicTransactionsRule.check(
+    buildCtx("transaction.ts", content),
   );
+  assert.strictEqual(issues.length, 0);
 });
 
-test("security rules accept approval guards", () => {
-  const config = loadConfig(".");
-  const lines = [
+test("securityDestructiveActionRule accepts approval guards", () => {
+  const content = [
     "if (approved) {",
     "  fs.writeFileSync('/etc/passwd', data);",
     "}",
-  ];
+  ].join("\n");
 
-  const issues = checkSecurityRules("destructive.ts", lines, config);
-  assert.strictEqual(
-    issues.some((issue) => issue.ruleId === "security-destructive-action"),
-    false,
+  const issues = securityDestructiveActionRule.check(
+    buildCtx("destructive.ts", content),
   );
+  assert.strictEqual(issues.length, 0);
 });
 
 test("orchestrator stamps configured warn severity for security-destructive-action", async () => {
@@ -84,39 +79,43 @@ test("orchestrator stamps configured warn severity for security-destructive-acti
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-test("context rules accept runId and correlationId", () => {
-  const config = loadConfig(".");
-  const runIdIssues = checkContextRules(
-    "agent.ts",
-    ["const agent = new Agent({ runId: 'test', tools: [] });"],
-    config,
+test("observabilityMissingTraceIdRule accepts runId and correlationId", () => {
+  const runIdIssues = observabilityMissingTraceIdRule.check(
+    buildCtx(
+      "agent.ts",
+      "const agent = new Agent({ runId: 'test', tools: [] });",
+    ),
   );
-  const correlationIssues = checkContextRules(
-    "agent.ts",
-    ["const agent = new Agent({ correlationId: 'corr-123', tools: [] });"],
-    config,
+  const correlationIssues = observabilityMissingTraceIdRule.check(
+    buildCtx(
+      "agent.ts",
+      "const agent = new Agent({ correlationId: 'corr-123', tools: [] });",
+    ),
   );
 
-  assert.strictEqual(
-    runIdIssues.some((issue) => issue.ruleId === "observability-missing-trace-id"),
-    false,
-  );
-  assert.strictEqual(
-    correlationIssues.some((issue) => issue.ruleId === "observability-missing-trace-id"),
-    false,
-  );
+  assert.strictEqual(runIdIssues.length, 0);
+  assert.strictEqual(correlationIssues.length, 0);
 });
 
-test("tool rules handle duplicate declarations branch", () => {
-  const config = loadConfig(".");
+test("toolWeakSchemaRule populates globalTools so duplicates can be detected", () => {
+  // The intra-file `tool-overlapping` Rule has a no-op check (workspace
+  // emission stays in the orchestrator). This test exercises the
+  // workspace-level path: weak-schema collects tool names into globalTools,
+  // then we manually run the dedup pass.
   const lines = [
-    'export const tools = [',
+    "export const tools = [",
     '  { name: "tool1", handler: func1 },',
     '  { name: "tool1", handler: func2 },',
     '  { name: "tool1", handler: func3 }',
-    '];',
-  ];
+    "];",
+  ].join("\n");
 
-  const issues = checkToolRules("tools.ts", lines, config);
-  assert.ok(issues.some((issue) => issue.ruleId === "tool-overlapping"));
+  const ctx = buildCtx("tools.ts", lines);
+  toolWeakSchemaRule.check(ctx);
+  const names = ctx.globalTools.map((t) => t.name);
+  const dups = names.filter((name, i) => names.indexOf(name) !== i);
+  assert.ok(dups.length > 0, "expected duplicate tool names in globalTools");
+
+  // Sanity check on the rule itself (no-op check)
+  assert.equal(toolOverlappingRule.check(ctx).length, 0);
 });

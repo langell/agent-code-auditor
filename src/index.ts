@@ -9,7 +9,11 @@ import {
   runLinter,
   runASTAnalyzer,
 } from "./scanners/index.js";
-import { runFixer } from "./fixers/index.js";
+import { VulnerabilityReport } from "./scanners/vulnerabilities.js";
+import { LinterReport } from "./scanners/linter.js";
+import { AgentIssue } from "./scanners/types.js";
+import { runFixer } from "./fix-orchestrator.js";
+
 import { loadConfig } from "./config.js";
 import {
   printCsvReport,

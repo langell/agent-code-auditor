@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { fixToolRules } from "../src/fixers/tool-fixer.js";
+import { toolOverlappingRule } from "../src/rules/tool-overlapping.js";
 import type { AgentIssue } from "../src/scanners/types.js";
 
-test("fixToolRules renames duplicate tool names for tool-overlapping", () => {
+test("toolOverlappingRule.applyFix renames duplicate tool names", () => {
   const original = [
     "const tools = [",
     '  { name: "search", description: "first" },',
@@ -25,7 +25,11 @@ test("fixToolRules renames duplicate tool names for tool-overlapping", () => {
     },
   ];
 
-  const { content, fixes } = fixToolRules(original, issues, "tools.ts");
+  const { content, fixes } = toolOverlappingRule.applyFix!(
+    original,
+    issues,
+    "tools.ts",
+  );
 
   assert.equal(fixes.length, 2);
   assert.match(content, /name: "search", description: "first"/);
@@ -34,7 +38,7 @@ test("fixToolRules renames duplicate tool names for tool-overlapping", () => {
   assert.match(content, /name: "fetch", description: "single"/);
 });
 
-test("fixToolRules does nothing for tool-overlapping when names are already unique", () => {
+test("toolOverlappingRule.applyFix is a no-op when names are already unique", () => {
   const original = [
     "const tools = [",
     '  { name: "search", description: "first" },',
@@ -54,13 +58,17 @@ test("fixToolRules does nothing for tool-overlapping when names are already uniq
     },
   ];
 
-  const { content, fixes } = fixToolRules(original, issues, "tools.ts");
+  const { content, fixes } = toolOverlappingRule.applyFix!(
+    original,
+    issues,
+    "tools.ts",
+  );
 
   assert.equal(fixes.length, 0);
   assert.equal(content, original);
 });
 
-test("fixToolRules avoids collisions with existing suffixed tool names", () => {
+test("toolOverlappingRule.applyFix avoids collisions with existing suffixed names", () => {
   const original = [
     "const tools = [",
     '  { name: "search", description: "first" },',
@@ -81,7 +89,11 @@ test("fixToolRules avoids collisions with existing suffixed tool names", () => {
     },
   ];
 
-  const { content, fixes } = fixToolRules(original, issues, "tools.ts");
+  const { content, fixes } = toolOverlappingRule.applyFix!(
+    original,
+    issues,
+    "tools.ts",
+  );
 
   assert.equal(fixes.length, 2);
   assert.match(content, /name: "search", description: "first"/);
