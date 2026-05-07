@@ -3,34 +3,24 @@
 Living doc tracking what's left after the deepen-rules migration. Update or
 delete entries as they land.
 
-## In flight (open PRs)
+## Recently landed
 
-- `test/coverage-tightening` — adds tests for atomic-transactions AST path
-  and verification framework branches; ~98% line / ~91% branch coverage.
-- `refactor/drop-facades` — deletes the 16 family facade files
-  (`src/fixers/*-fixer.ts`, `src/scanners/rules/*-lint.ts`); migrates ~150
-  test imports to the per-`ruleId` Rules. Completes the original plan's
-  intent.
-- `feat/custom-rule-loading` — first scoped-out item from the plan: users
-  register their own Rule modules via `customRules` in
-  `.agentlintrc.json`.
+- ✅ Reporter split out of `src/index.ts` (PR #16) — CLI shrunk from
+  ~360 → 97 lines; `src/report/{text,csv,index}.ts` carry formatting.
+- ✅ `feat/custom-rule-loading` (PR #14) — first scoped-out plan item:
+  `customRules` array in `.agentlintrc.json`.
+- ✅ `refactor/drop-facades` (PR #15) — deleted 16 family facade files;
+  tests now go through per-`ruleId` Rules directly.
+- ✅ `test/coverage-tightening` (PR #13) — coverage on the
+  atomic-transactions AST path and verification framework branches.
+
+Current state on main: 228/228 tests pass; ~95–98% line coverage; all 20
+per-`ruleId` rule modules under `src/rules/`; canonical Rule interface
+with `check` + optional `applyFix`.
 
 ## Next up
 
-### 1. Reporter split out of `src/index.ts`
-
-The CLI (~360 lines) mixes commander setup, scan/fix dispatch,
-chalk-formatted text output, and CSV output. Split into:
-
-- `src/report/text.ts` — `printTextReport(vuln, lint, ast)` with chalk
-- `src/report/csv.ts` — `printCsvReport(vuln, lint, ast, targetDir)`
-- `src/report/index.ts` — re-exports
-
-Pulls the long `printReport` function and the inline CSV emission out;
-leaves `src/index.ts` as a thin commander shell. Unblocks (2) and the
-programmatic-API surface mentioned below. Small-medium effort.
-
-### 2. Scanner interface uniformity
+### 1. Scanner interface uniformity
 
 `runVulnerabilityScanner`, `runLinter`, and `runASTAnalyzer` each return a
 different shape. Unify under a common `Scanner` interface (matching the
@@ -38,14 +28,14 @@ different shape. Unify under a common `Scanner` interface (matching the
 generically and so the library API has one well-typed result shape.
 
 Files: `src/scanners/{vulnerabilities,linter,ast-analyzer}.ts`,
-`src/scanners/types.ts`. Medium effort. Should land after (1) so the
-reporter can consume the unified shape.
+`src/scanners/types.ts`, plus reporter consumers
+(`src/report/{text,csv}.ts`). Medium effort.
 
-### 3. Programmatic API surface
+### 2. Programmatic API surface
 
 For embedding agentlint as a library (other tools running scans/fixes
-in-process). After (1) and (2), expose a clean entry point from
-`src/index.ts` (or a new `src/api.ts`) that re-exports `runASTAnalyzer`,
+in-process). After (1), expose a clean entry point — either from
+`src/index.ts` or a new `src/api.ts` — that re-exports `runASTAnalyzer`,
 `runFixer`, `loadConfig`, `registry`, `Rule`, `RuleContext`. Update
 `package.json` `main` / `exports` if needed. Small effort.
 
