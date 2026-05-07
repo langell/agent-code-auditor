@@ -115,10 +115,14 @@ export async function runASTAnalyzer(
   return applyConfig(rawIssues, config);
 }
 
-// Scanner-shaped wrapper around runASTAnalyzer.
+// Scanner-shaped wrapper around runASTAnalyzer. `toIssues` is the identity —
+// the AST scanner already produces the canonical AgentIssue[] shape.
 export const astScanner: Scanner<AgentIssue[]> = {
   name: "ast",
   run(ctx) {
     return runASTAnalyzer(ctx.targetDir, ctx.config);
+  },
+  toIssues(report) {
+    return report;
   },
 };

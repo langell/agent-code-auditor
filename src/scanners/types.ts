@@ -30,10 +30,13 @@ export interface ToolDeclaration {
 // linter wrapper, AST analyzer) a uniform shape so the CLI can iterate them
 // and the library API has one well-typed entry point per scanner.
 //
-// `T` is the scanner-specific report type — kept generic for now rather than
-// unified onto AgentIssue[] so the existing per-scanner reporter code keeps
-// working unchanged. A follow-up can convert all scanner outputs to a
-// canonical AgentIssue[] shape if/when the reporter is rewritten.
+// `T` is the scanner-specific report type. The reporter consumes T directly
+// (each scanner's section is rendered with its own per-shape formatting),
+// while library users that want a uniform issue stream call `toIssues(T)`
+// to flatten any scanner's output into `AgentIssue[]`. This avoids forcing
+// every scanner onto a single canonical shape (which would lose meaningful
+// per-section formatting in the reporter) while still giving consumers a
+// single way to walk every issue.
 export interface ScannerContext {
   targetDir: string;
   // Some scanners ignore config (e.g. vulnerability), but providing it
@@ -45,4 +48,10 @@ export interface Scanner<T> {
   /** Stable id — also used as the section name in reports. */
   name: string;
   run(ctx: ScannerContext): Promise<T>;
+  /**
+   * Adapt this scanner's native report shape to a uniform `AgentIssue[]`
+   * stream. Library users compose multiple scanners' outputs by calling
+   * `toIssues` on each; the reporter still uses the native `T` shape.
+   */
+  toIssues(report: T): AgentIssue[];
 }
