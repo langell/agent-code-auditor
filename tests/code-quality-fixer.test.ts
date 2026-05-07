@@ -1,89 +1,80 @@
-import assert from "node:assert/strict";
+// Demonstrates the test harness from `_helpers.ts`. Compare against the
+// pre-harness version (in git history) for the readability win — the
+// before/after pattern reads like a spec instead of plumbing.
 import test from "node:test";
 
 import { codeQualityNoAnyRule } from "../src/rules/code-quality-no-any.js";
-import type { AgentIssue } from "../src/scanners/types.js";
+import { expectFix, expectNoFix, makeIssue } from "./_helpers.js";
 
-test("codeQualityNoAnyRule.applyFix replaces any patterns", () => {
-  const original = [
-    "const a: any = {};",
-    "const b = value as any;",
-    "const c = <any>value;",
-    "const d = 1;",
-  ].join("\n");
-
-  const issues: AgentIssue[] = [1, 2, 3].map((line) => ({
-    file: "sample.ts",
-    line,
-    message: "Use of 'any' type detected.",
-    ruleId: "code-quality-no-any",
-    severity: "error",
-    category: "Code Quality",
-  }));
-
-  const { content, fixes } = codeQualityNoAnyRule.applyFix!(
-    original,
-    issues,
-    "sample.ts",
-  );
-
-  assert.equal(fixes.length, 3);
-  assert.match(content, /const a: unknown = \{\};/);
-  assert.match(content, /const b = value as unknown;/);
-  assert.match(content, /const c = <unknown>value;/);
-  assert.match(content, /const d = 1;/);
+test("codeQualityNoAnyRule.applyFix replaces any patterns (line-based)", () => {
+  expectFix(codeQualityNoAnyRule, {
+    before: [
+      "const a: any = {};",
+      "const b = value as any;",
+      "const c = <any>value;",
+      "const d = 1;",
+    ].join("\n"),
+    after: [
+      "const a: unknown = {};",
+      "const b = value as unknown;",
+      "const c = <unknown>value;",
+      "const d = 1;",
+    ].join("\n"),
+    issues: [1, 2, 3].map((line) =>
+      makeIssue({
+        ruleId: "code-quality-no-any",
+        line,
+        file: "sample.ts",
+        severity: "error",
+        category: "Code Quality",
+      }),
+    ),
+    filePath: "sample.ts",
+    fixCount: 3,
+  });
 });
 
 test("codeQualityNoAnyRule.applyFix is a no-op when no matching issues", () => {
-  const original = "const a: any = {}";
-
-  const issues: AgentIssue[] = [
-    {
-      file: "sample.ts",
-      line: 1,
-      message: "Different rule",
-      ruleId: "spec-missing-rollback",
-      severity: "warn",
-      category: "Spec",
-    },
-  ];
-
-  const { content, fixes } = codeQualityNoAnyRule.applyFix!(
-    original,
-    issues,
-    "sample.ts",
-  );
-
-  assert.equal(fixes.length, 0);
-  assert.equal(content, original);
+  expectNoFix(codeQualityNoAnyRule, {
+    before: "const a: any = {}",
+    issues: [
+      makeIssue({
+        ruleId: "spec-missing-rollback",
+        file: "sample.ts",
+        category: "Spec",
+      }),
+    ],
+    filePath: "sample.ts",
+  });
 });
 
 test("codeQualityNoAnyRule.applyFix skips lines containing strings or comments", () => {
-  const original = [
-    `const msg = "type: any inside string";`,
-    `// example: any here in a comment`,
-    `const x: any = 1;`,
-    ``,
-  ].join("\n");
-
-  const issues: AgentIssue[] = [1, 2, 3].map((line) => ({
-    file: "mixed.ts",
-    line,
-    message: "any",
-    ruleId: "code-quality-no-any",
-    severity: "error",
-    category: "Code Quality",
-  }));
-
-  const { content, fixes } = codeQualityNoAnyRule.applyFix!(
-    original,
-    issues,
-    "mixed.ts",
-  );
-
-  // Only the bare `const x: any = 1` line is rewritten
-  assert.equal(fixes.length, 1);
-  assert.match(content, /type:\s*any inside string/);
-  assert.match(content, /\/\/ example:\s*any here in a comment/);
-  assert.match(content, /const x:\s*unknown\s*=\s*1/);
+  // The line-based fallback only rewrites lines that are pure code — lines
+  // containing string/template literals or comments are left alone, since
+  // `: any` could legitimately live inside a string.
+  expectFix(codeQualityNoAnyRule, {
+    before: [
+      `const msg = "type: any inside string";`,
+      `// example: any here in a comment`,
+      `const x: any = 1;`,
+      ``,
+    ].join("\n"),
+    after: [
+      `const msg = "type: any inside string";`,
+      `// example: any here in a comment`,
+      `const x: unknown = 1;`,
+      ``,
+    ].join("\n"),
+    issues: [1, 2, 3].map((line) =>
+      makeIssue({
+        ruleId: "code-quality-no-any",
+        line,
+        file: "mixed.ts",
+        severity: "error",
+        category: "Code Quality",
+      }),
+    ),
+    filePath: "mixed.ts",
+    fixCount: 1,
+  });
 });
