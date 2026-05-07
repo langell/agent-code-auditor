@@ -76,18 +76,38 @@ export interface CustomFixer {
   ): Promise<FixOutcome> | FixOutcome;
 }
 
+// Workspace-level context passed to `Rule.aggregate`. Built once per scan,
+// after every file has been visited and per-file `check` has run. Carries
+// any cross-file accumulator state the orchestrator threaded through the
+// per-file loop.
+//
+// Today this only covers `globalTools` (used by `tool-overlapping`), but the
+// shape exists so additional cross-file rules can be added without changing
+// the Rule interface.
+export interface WorkspaceContext {
+  targetDir: string;
+  globalTools: ToolDeclaration[];
+}
+
 // A self-contained module that detects one specific kind of issue and
 // optionally knows how to fix it. Identified by `id` (which is also the
 // `ruleId` carried by issues this Rule emits).
 //
-// `check` is the detector. `applyFix` (optional) is the fixer — receives only
-// the issues this Rule emitted, transforms content, returns a FixOutcome.
+// - `check` is the per-file detector.
+// - `aggregate` (optional) runs once after the per-file loop, for cross-file
+//   detection (e.g. duplicate tool names across the workspace). Most rules
+//   leave this undefined.
+// - `applyFix` (optional) is the fixer — receives only the issues this Rule
+//   emitted (whether from check or aggregate), transforms content, returns
+//   a FixOutcome.
+//
 // Rules are config-blind; the orchestrator handles config (drop "off",
 // override severity).
 export interface Rule {
   id: string;
   appliesTo: RuleApplicability;
   check(ctx: RuleContext): AgentIssue[];
+  aggregate?(ctx: WorkspaceContext): AgentIssue[];
   applyFix?(
     content: string,
     issues: AgentIssue[],
