@@ -3,7 +3,7 @@ import * as path from "path";
 import { glob } from "glob";
 import * as ts from "typescript";
 import { AgentLintConfig } from "../config.js";
-import { AgentIssue, ToolDeclaration } from "./types.js";
+import { AgentIssue, Scanner, ToolDeclaration } from "./types.js";
 import { registry } from "../rules/index.js";
 import { RuleContext } from "../rules/types.js";
 import { loadCustomRules, mergeRules } from "../load-custom-rules.js";
@@ -114,3 +114,11 @@ export async function runASTAnalyzer(
 
   return applyConfig(rawIssues, config);
 }
+
+// Scanner-shaped wrapper around runASTAnalyzer.
+export const astScanner: Scanner<AgentIssue[]> = {
+  name: "ast",
+  run(ctx) {
+    return runASTAnalyzer(ctx.targetDir, ctx.config);
+  },
+};

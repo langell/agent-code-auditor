@@ -5,15 +5,12 @@ import * as path from "path";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import {
-  runVulnerabilityScanner,
+  vulnerabilityScanner,
+  linterScanner,
+  astScanner,
   runLinter,
-  runASTAnalyzer,
 } from "./scanners/index.js";
-import { VulnerabilityReport } from "./scanners/vulnerabilities.js";
-import { LinterReport } from "./scanners/linter.js";
-import { AgentIssue } from "./scanners/types.js";
 import { runFixer } from "./fix-orchestrator.js";
-
 import { loadConfig } from "./config.js";
 import {
   printCsvReport,
@@ -53,12 +50,13 @@ program
     const targetDir = path.resolve(process.cwd(), options.dir);
     const config = loadConfig(targetDir);
     const isText = options.format !== "csv";
+    const ctx = { targetDir, config };
 
     if (isText) printScanHeader(targetDir, config);
 
-    const vuln = await runVulnerabilityScanner(targetDir);
-    const lint = await runLinter(targetDir, false);
-    const ast = await runASTAnalyzer(targetDir, config);
+    const vuln = await vulnerabilityScanner.run(ctx);
+    const lint = await linterScanner.run(ctx);
+    const ast = await astScanner.run(ctx);
 
     if (options.format === "csv") {
       printCsvReport(vuln, lint, ast, targetDir);
@@ -75,14 +73,17 @@ program
   .action(async (options) => {
     const targetDir = path.resolve(process.cwd(), options.dir);
     const config = loadConfig(targetDir);
+    const ctx = { targetDir, config };
 
     printFixHeader(targetDir);
 
     console.log(chalk.yellow("Running Linter Auto-fix..."));
+    // Linter fix-mode is a side-effect operation, not a scan, so it
+    // doesn't go through the Scanner abstraction.
     await runLinter(targetDir, true);
 
     console.log(chalk.yellow("\nRunning Agentic Auto-fix..."));
-    const initialIssues = await runASTAnalyzer(targetDir, config);
+    const initialIssues = await astScanner.run(ctx);
     const fixReport = await runFixer(targetDir, initialIssues, config);
 
     printFixReport(fixReport);
@@ -91,9 +92,9 @@ program
       chalk.blue("\nRe-scanning directory for remaining issues...\n"),
     );
 
-    const vuln = await runVulnerabilityScanner(targetDir);
-    const finalLint = await runLinter(targetDir, false);
-    const finalAST = await runASTAnalyzer(targetDir, config);
+    const vuln = await vulnerabilityScanner.run(ctx);
+    const finalLint = await linterScanner.run(ctx);
+    const finalAST = await astScanner.run(ctx);
 
     printScanReport(vuln, finalLint, finalAST);
   });
