@@ -2,6 +2,7 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import * as fs from "fs";
 import * as path from "path";
+import type { Scanner } from "./types.js";
 
 const execAsync = promisify(exec);
 
@@ -110,3 +111,13 @@ export async function runVulnerabilityScanner(
     vulnerabilities: [],
   };
 }
+
+// Scanner-shaped wrapper around runVulnerabilityScanner. Both forms remain
+// exported during the transition; the Scanner shape is preferred for new
+// callers and the eventual programmatic API surface.
+export const vulnerabilityScanner: Scanner<VulnerabilityReport> = {
+  name: "vulnerability",
+  run(ctx) {
+    return runVulnerabilityScanner(ctx.targetDir);
+  },
+};

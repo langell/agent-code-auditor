@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import { ESLint } from "eslint";
+import type { Scanner } from "./types.js";
 
 type LintMessage = {
   severity: number;
@@ -105,3 +106,14 @@ export async function runLinter(
     };
   }
 }
+
+// Scanner-shaped wrapper for the read-only lint pass. The fix-mode call
+// (`runLinter(dir, true)`) stays out of the Scanner abstraction because
+// fix-mode is a side-effect operation, not a scan, and it's only invoked
+// from the `agentlint fix` command path.
+export const linterScanner: Scanner<LinterReport> = {
+  name: "linter",
+  run(ctx) {
+    return runLinter(ctx.targetDir, false);
+  },
+};
