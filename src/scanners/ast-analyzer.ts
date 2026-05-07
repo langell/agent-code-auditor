@@ -5,7 +5,7 @@ import * as ts from "typescript";
 import { AgentLintConfig } from "../config.js";
 import { AgentIssue, ToolDeclaration } from "./types.js";
 import { registry } from "../rules/index.js";
-import { RuleContext } from "../rules/types.js";
+import { RuleContext, WorkspaceContext } from "../rules/types.js";
 import { loadCustomRules, mergeRules } from "../load-custom-rules.js";
 
 function isSourceFile(filePath: string): boolean {
@@ -58,8 +58,8 @@ export async function runASTAnalyzer(
   const effectiveRules = mergeRules(registry, customRules);
 
   // Cross-file accumulator for tool-overlapping. Threaded through every
-  // RuleContext so the tool family Rule can populate it and the post-loop
-  // overlap aggregator below can read it.
+  // RuleContext so the tool family Rule can populate it during check; the
+  // generic `aggregate` pass below reads it.
   const globalTools: ToolDeclaration[] = [];
 
   for (const file of files) {
@@ -91,24 +91,14 @@ export async function runASTAnalyzer(
     }
   }
 
-  // Cross-file aggregation: emit one issue per tool name that appears in
-  // more than one file. Always emits at the rule's default severity; the
-  // applyConfig pass below handles "off" / overrides uniformly.
-  const seenTools = new Map<string, string>();
-  for (const tool of globalTools) {
-    if (seenTools.has(tool.name)) {
-      rawIssues.push({
-        file: tool.file,
-        line: tool.line,
-        message: `Tool '${tool.name}' overlaps with a tool defined in ${seenTools.get(tool.name)}.`,
-        ruleId: "tool-overlapping",
-        severity: "error",
-        suggestion:
-          "Ensure each tool has a distinct name and purpose across the workspace.",
-        category: "Tool",
-      });
-    } else {
-      seenTools.set(tool.name, tool.file);
+  // Cross-file aggregation: every Rule with an `aggregate` method runs once
+  // after the per-file loop. Today only `tool-overlapping` uses this; the
+  // hook is generic so additional cross-file rules can be added without
+  // changing the orchestrator.
+  const workspaceCtx: WorkspaceContext = { targetDir: dir, globalTools };
+  for (const rule of effectiveRules) {
+    if (rule.aggregate) {
+      rawIssues.push(...rule.aggregate(workspaceCtx));
     }
   }
 

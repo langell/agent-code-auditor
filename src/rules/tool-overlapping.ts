@@ -1,17 +1,38 @@
+import { AgentIssue } from "../scanners/types.js";
 import { FixRecord, Rule } from "./types.js";
 
-// `tool-overlapping` is a workspace-level concern: emission happens in the
-// orchestrator's cross-file aggregator (after every file has been scanned),
-// not as a per-file Rule. This module exists to carry the fix logic so the
-// fix orchestrator can pair issues with `applyFix` via ruleId lookup.
+// `tool-overlapping` is a workspace-level concern. `check` (per-file) is a
+// no-op; the actual emission happens in `aggregate`, which runs once after
+// the per-file loop and dedups tool names across every file scanned.
 //
-// `check` is a no-op — including this Rule in the registry would otherwise
-// double-emit issues.
+// `applyFix` is also defined so the fix orchestrator can route the rule's
+// issues through the rename-duplicates fixer.
 export const toolOverlappingRule: Rule = {
   id: "tool-overlapping",
   appliesTo: "source",
   check() {
     return [];
+  },
+  aggregate(ctx) {
+    const issues: AgentIssue[] = [];
+    const seen = new Map<string, string>();
+    for (const tool of ctx.globalTools) {
+      if (seen.has(tool.name)) {
+        issues.push({
+          file: tool.file,
+          line: tool.line,
+          message: `Tool '${tool.name}' overlaps with a tool defined in ${seen.get(tool.name)}.`,
+          ruleId: "tool-overlapping",
+          severity: "error",
+          suggestion:
+            "Ensure each tool has a distinct name and purpose across the workspace.",
+          category: "Tool",
+        });
+      } else {
+        seen.set(tool.name, tool.file);
+      }
+    }
+    return issues;
   },
   applyFix(content, issues) {
     const fixes: FixRecord[] = [];
