@@ -2,11 +2,28 @@
   "name": "agent-code-auditor",
   "version": "1.0.3",
   "description": "Configurable audit tool and linter for AI-generated code",
-  "main": "dist/index.js",
+  "main": "./dist/api.js",
+  "types": "./dist/api.d.ts",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/api.d.ts",
+      "import": "./dist/api.js"
+    },
+    "./cli": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "bin": {
     "agentlint": "./dist/index.js"
   },
+  "files": [
+    "dist",
+    "examples",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node ./dist/index.js",
