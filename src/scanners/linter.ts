@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import { ESLint } from "eslint";
-import type { Scanner } from "./types.js";
+import type { AgentIssue, Scanner } from "./types.js";
 
 type LintMessage = {
   severity: number;
@@ -115,5 +115,46 @@ export const linterScanner: Scanner<LinterReport> = {
   name: "linter",
   run(ctx) {
     return runLinter(ctx.targetDir, false);
+  },
+  toIssues(report) {
+    if (!report.available) {
+      // Surface the linter's failure as a single workspace-level issue so
+      // library consumers walking the unified stream don't silently miss
+      // the fact that ESLint couldn't run.
+      return [
+        {
+          file: "-",
+          line: 1,
+          message:
+            report.failureMessage ||
+            "The target project's ESLint setup could not be executed.",
+          ruleId: "eslint-unavailable",
+          severity: "warn",
+          suggestion:
+            "Run ESLint directly in the target project to fix its local configuration or dependency graph.",
+          category: "Code Quality",
+        },
+      ];
+    }
+
+    const issues: AgentIssue[] = [];
+    for (const result of report.messages) {
+      for (const msg of result.messages) {
+        issues.push({
+          file: result.filePath,
+          line: msg.line ?? 1,
+          message: msg.message,
+          ruleId: msg.ruleId ? `eslint:${msg.ruleId}` : "eslint:unknown",
+          severity: msg.severity === 2 ? "error" : "warn",
+          suggestion: msg.fix
+            ? "Auto-fix available via 'agentlint fix'."
+            : msg.ruleId
+              ? `Review ESLint rule '${msg.ruleId}' to resolve this issue.`
+              : undefined,
+          category: "Code Quality",
+        });
+      }
+    }
+    return issues;
   },
 };

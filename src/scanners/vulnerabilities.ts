@@ -2,7 +2,7 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import * as fs from "fs";
 import * as path from "path";
-import type { Scanner } from "./types.js";
+import type { AgentIssue, Scanner } from "./types.js";
 
 const execAsync = promisify(exec);
 
@@ -112,6 +112,14 @@ export async function runVulnerabilityScanner(
   };
 }
 
+// Map an npm-audit severity string to the AgentIssue severity enum.
+// `critical` and `high` are errors; everything else (moderate, low, info)
+// is a warning. Unknown severities default to warn so they're at least
+// surfaced.
+function mapVulnerabilitySeverity(severity: string): AgentIssue["severity"] {
+  return severity === "critical" || severity === "high" ? "error" : "warn";
+}
+
 // Scanner-shaped wrapper around runVulnerabilityScanner. Both forms remain
 // exported during the transition; the Scanner shape is preferred for new
 // callers and the eventual programmatic API surface.
@@ -119,5 +127,16 @@ export const vulnerabilityScanner: Scanner<VulnerabilityReport> = {
   name: "vulnerability",
   run(ctx) {
     return runVulnerabilityScanner(ctx.targetDir);
+  },
+  toIssues(report) {
+    return report.vulnerabilities.map((v) => ({
+      file: "package.json",
+      line: 1,
+      message: `Dependency '${v.package}' has a known ${v.severity} vulnerability.`,
+      ruleId: "security-vulnerable-dependency",
+      severity: mapVulnerabilitySeverity(v.severity),
+      suggestion: v.suggestion,
+      category: "Security",
+    }));
   },
 };
