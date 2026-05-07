@@ -196,6 +196,47 @@ A working example lives in
 - `agentlint --help`: Display help for commands.
 - `agentlint --version`: Display the current version.
 
+## Programmatic API
+
+Beyond the CLI, agent-code-auditor exposes a TypeScript-typed library
+entry point so you can run scans and fixes from your own code (CI scripts,
+custom dashboards, IDE extensions, etc.).
+
+```ts
+import {
+  runASTAnalyzer,
+  runFixer,
+  loadConfig,
+  registry,
+  printScanReport,
+} from "agent-code-auditor";
+import type { Rule, AgentIssue } from "agent-code-auditor";
+
+const config = loadConfig("./project");
+const issues: AgentIssue[] = await runASTAnalyzer("./project", config);
+console.log(`Found ${issues.length} issues`);
+
+// Apply auto-fixes
+const fixReport = await runFixer("./project", issues, config);
+console.log(`Applied ${fixReport.fixes.length} fixes`);
+```
+
+The library entry exports the orchestrators (`runASTAnalyzer`, `runFixer`,
+`runLinter`, `runVulnerabilityScanner`), the unified `Scanner` objects
+(`astScanner`, `linterScanner`, `vulnerabilityScanner`), the rule
+registry, the custom-rule loader, the reporter functions
+(`printScanReport`, `printCsvReport`, etc.), and every public type
+(`Rule`, `RuleContext`, `AgentIssue`, `FixOutcome`, `Scanner<T>`, …).
+
+Importing from the package gives you the library, never the CLI:
+
+```ts
+import { runASTAnalyzer } from "agent-code-auditor";        // library
+// vs.
+import "agent-code-auditor/cli";                            // not what you want
+// (use the `agentlint` bin instead — see Commands above)
+```
+
 ## Release Workflow (Semantic Versioning)
 
 This project uses semantic-release for automatic versioning and npm publishing
