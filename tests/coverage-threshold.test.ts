@@ -18,7 +18,14 @@ import { codeQualityNoAnyRule } from "../src/rules/code-quality-no-any.js";
 import { executionMissingMaxStepsRule } from "../src/rules/execution-missing-max-steps.js";
 import { verificationMissingTestsRule } from "../src/rules/verification-missing-tests.js";
 import { placeholderCommentsRule } from "../src/rules/legacy/placeholder-comments.js";
-import { buildCtx } from "./_helpers.js";
+import {
+  buildCtx,
+  expectCheck,
+  expectFix,
+  expectNoFix,
+  expectNoIssues,
+  makeIssue,
+} from "./_helpers.js";
 import type { AgentIssue } from "../src/scanners/types.js";
 
 function makeTempDir(prefix: string): string {
@@ -30,6 +37,8 @@ function makeTempDir(prefix: string): string {
 // =================================================================
 
 test("context-oversized + observability-missing-trace-id (AST) flag oversized strings and Agent without traceId", () => {
+  // Multi-rule case that also checks `startPos` is populated — drives ctx
+  // directly so the AST positions can be inspected.
   const huge = "x".repeat(5500);
   const content = [
     "const blob = `" + huge + "`;",
@@ -62,49 +71,50 @@ test("context-oversized + observability-missing-trace-id (non-AST) fallback path
 // =================================================================
 
 test("security-input-validation (AST) flags missing validation in api files", () => {
+  // Asserts startPos is populated — drives ctx directly.
   const content = [
     "export async function handler(req) {",
     "  return { ok: true };",
     "}",
   ].join("\n");
-  const issues = securityInputValidationRule.check(
-    buildCtx("src/app/api/handler/route.ts", content, true),
-  );
+  const ctx = buildCtx("src/app/api/handler/route.ts", content, true);
+  const issues = securityInputValidationRule.check(ctx);
   assert.ok(issues.length >= 1);
   assert.ok(issues[0].startPos !== undefined);
 });
 
 test("security-input-validation (non-AST) flags missing validation in actions files", () => {
-  const content = [
-    "'use server';",
-    "export async function action(input) {",
-    "  return input;",
-    "}",
-  ].join("\n");
-  const issues = securityInputValidationRule.check(
-    buildCtx("src/actions/run.ts", content),
-  );
-  assert.ok(issues.length > 0);
+  expectCheck(securityInputValidationRule, {
+    content: [
+      "'use server';",
+      "export async function action(input) {",
+      "  return input;",
+      "}",
+    ].join("\n"),
+    filePath: "src/actions/run.ts",
+    expectIssues: [{ ruleId: "security-input-validation" }],
+  });
 });
 
 test("security-input-validation (AST) allows validated api functions", () => {
-  const content = [
-    "export async function handler(req) {",
-    "  const parsed = z.object({}).parse(req);",
-    "  return parsed;",
-    "}",
-  ].join("\n");
-  const issues = securityInputValidationRule.check(
-    buildCtx("src/app/api/safe/route.ts", content, true),
-  );
-  assert.equal(issues.length, 0);
+  expectNoIssues(securityInputValidationRule, {
+    content: [
+      "export async function handler(req) {",
+      "  const parsed = z.object({}).parse(req);",
+      "  return parsed;",
+      "}",
+    ].join("\n"),
+    filePath: "src/app/api/safe/route.ts",
+    withAst: true,
+  });
 });
 
 test("security-prompt-injection detects toolOutput template", () => {
-  const issues = securityPromptInjectionRule.check(
-    buildCtx("inject.ts", "const prompt = `Use this output: ${toolOutput}`;"),
-  );
-  assert.ok(issues.length > 0);
+  expectCheck(securityPromptInjectionRule, {
+    content: "const prompt = `Use this output: ${toolOutput}`;",
+    filePath: "inject.ts",
+    expectIssues: [{ ruleId: "security-prompt-injection" }],
+  });
 });
 
 // =================================================================
@@ -112,6 +122,8 @@ test("security-prompt-injection detects toolOutput template", () => {
 // =================================================================
 
 test("tool-weak-schema + tool-missing-examples (AST) emit for object schemas; globalTools is populated", () => {
+  // Verifies the side effect of populating ctx.globalTools — needs direct
+  // ctx access.
   const content = [
     "const schema = {",
     '  type: "object",',
@@ -142,13 +154,11 @@ test("tool-weak-schema (non-AST) populates globalTools", () => {
 });
 
 test("tool-missing-examples (non-AST) detects missing examples around object schemas", () => {
-  const issues = toolMissingExamplesRule.check(
-    buildCtx(
-      "tool.ts",
-      'const schema = { type: "object", description: "thing", properties: {} };',
-    ),
-  );
-  assert.ok(issues.length > 0);
+  expectCheck(toolMissingExamplesRule, {
+    content: 'const schema = { type: "object", description: "thing", properties: {} };',
+    filePath: "tool.ts",
+    expectIssues: [{ ruleId: "tool-missing-examples" }],
+  });
 });
 
 // =================================================================
@@ -218,6 +228,9 @@ test("AST analyzer detects placeholder block and HTML comments", async () => {
 // =================================================================
 
 test("observabilityMissingTraceIdRule.applyFix injects traceId via AST positions", async () => {
+  // End-to-end: orchestrator emits the issue (with AST positions), then
+  // we hand the issues to applyFix. Stays at the runASTAnalyzer level so
+  // the AST positions are real.
   const tempDir = makeTempDir("agentlint-context-ast-fix-");
   const filePath = path.join(tempDir, "agent.ts");
   const original = "const agent = new Agent({ name: 'a', tools: [] });\n";
@@ -244,16 +257,13 @@ test("observabilityMissingTraceIdRule.applyFix injects traceId via AST positions
 
 test("observabilityMissingTraceIdRule.applyFix injects via AST positions with empty Agent()", () => {
   const original = "const agent = new Agent();\n";
-  const issue: AgentIssue = {
-    file: "agent.ts",
-    line: 1,
-    message: "missing trace",
+  const issue = makeIssue({
     ruleId: "observability-missing-trace-id",
-    severity: "warn",
+    file: "agent.ts",
     category: "Context",
     startPos: original.indexOf("new Agent()"),
     endPos: original.indexOf("new Agent()") + "new Agent()".length,
-  };
+  });
 
   const { content, fixes } = observabilityMissingTraceIdRule.applyFix!(
     original,
@@ -269,6 +279,7 @@ test("observabilityMissingTraceIdRule.applyFix injects via AST positions with em
 // =================================================================
 
 test("securityInputValidationRule.applyFix adds validate() guard via AST positions for api files", async () => {
+  // End-to-end via runASTAnalyzer to get real AST positions.
   const tempDir = makeTempDir("agentlint-sec-input-ast-");
   const apiDir = path.join(tempDir, "src", "app", "api", "handler");
   fs.mkdirSync(apiDir, { recursive: true });
@@ -337,35 +348,34 @@ test("executionMissingMaxStepsRule.applyFix bounds while(true) via AST positions
 });
 
 test("executionMissingMaxStepsRule.applyFix avoids reusing existing __agentStep loop var", () => {
-  const original = [
-    "const __agentStep = 0;",
-    "while (true) { run(); }",
-    "",
-  ].join("\n");
-
-  const issue: AgentIssue = {
-    file: "loop.ts",
-    line: 2,
-    message: "while true",
-    ruleId: "execution-missing-max-steps",
-    severity: "warn",
-    category: "Execution",
-  };
-
-  const { content, fixes } = executionMissingMaxStepsRule.applyFix!(
-    original,
-    [issue],
-    "loop.ts",
-  );
-  assert.ok(fixes.length > 0);
-  assert.match(content, /__agentStep1/);
+  expectFix(executionMissingMaxStepsRule, {
+    before: ["const __agentStep = 0;", "while (true) { run(); }", ""].join("\n"),
+    after: [
+      "const __agentStep = 0;",
+      "for (let __agentStep1 = 0; __agentStep1 < 100; __agentStep1++) { run(); }",
+      "",
+    ].join("\n"),
+    issues: [
+      makeIssue({
+        ruleId: "execution-missing-max-steps",
+        line: 2,
+        file: "loop.ts",
+        category: "Execution",
+      }),
+    ],
+    filePath: "loop.ts",
+    fixCount: 1,
+  });
 });
 
 // =================================================================
-// tool-weak-schema + tool-missing-examples applyFix
+// tool-weak-schema + tool-missing-examples applyFix (multi-rule pipeline)
 // =================================================================
 
 test("tool-weak-schema + tool-missing-examples applyFix expand empty properties and append examples", () => {
+  // Threading content through two rules is a pipeline shape the harness
+  // doesn't directly model; we still drive both rules manually but use
+  // makeIssue for the issue lists.
   const original = [
     'const a = { type: "object", properties: {} };',
     'const b = { type: "object", properties: { id: { type: "number" } } };',
@@ -373,35 +383,13 @@ test("tool-weak-schema + tool-missing-examples applyFix expand empty properties 
   ].join("\n");
 
   const weakIssues: AgentIssue[] = [
-    {
-      file: "tool.ts",
-      line: 1,
-      message: "weak",
-      ruleId: "tool-weak-schema",
-      severity: "error",
-      category: "Tool",
-    },
-    {
-      file: "tool.ts",
-      line: 2,
-      message: "weak",
-      ruleId: "tool-weak-schema",
-      severity: "error",
-      category: "Tool",
-    },
+    makeIssue({ ruleId: "tool-weak-schema", line: 1, file: "tool.ts", severity: "error", category: "Tool" }),
+    makeIssue({ ruleId: "tool-weak-schema", line: 2, file: "tool.ts", severity: "error", category: "Tool" }),
   ];
   const exampleIssues: AgentIssue[] = [
-    {
-      file: "tool.ts",
-      line: 1,
-      message: "examples",
-      ruleId: "tool-missing-examples",
-      severity: "warn",
-      category: "Tool",
-    },
+    makeIssue({ ruleId: "tool-missing-examples", line: 1, file: "tool.ts", severity: "warn", category: "Tool" }),
   ];
 
-  // Thread content through both rules.
   const a = toolWeakSchemaRule.applyFix!(original, weakIssues, "tool.ts");
   const b = toolMissingExamplesRule.applyFix!(a.content, exampleIssues, "tool.ts");
 
@@ -416,60 +404,55 @@ test("tool-weak-schema + tool-missing-examples applyFix expand empty properties 
 // =================================================================
 
 test("placeholderCommentsRule.applyFix replaces placeholder TODO comments with hard-fail throws", () => {
-  const original = [
-    "function run() {",
-    "  // TODO: implement run logic",
-    "  return null;",
-    "}",
-    "",
-  ].join("\n");
-
-  const issues: AgentIssue[] = [
-    {
-      file: "src.ts",
-      line: 2,
-      message: "placeholder",
-      ruleId: "no-placeholder-comments",
-      severity: "error",
-      category: "Spec",
-    },
-  ];
-
-  const { content, fixes } = placeholderCommentsRule.applyFix!(
-    original,
-    issues,
-    "src.ts",
-  );
-  assert.ok(fixes.length > 0);
-  assert.match(content, /Not implemented - AI placeholder detected/);
+  expectFix(placeholderCommentsRule, {
+    before: [
+      "function run() {",
+      "  // TODO: implement run logic",
+      "  return null;",
+      "}",
+      "",
+    ].join("\n"),
+    after: [
+      "function run() {",
+      `  throw new Error("Not implemented - AI placeholder detected");`,
+      "  return null;",
+      "}",
+      "",
+    ].join("\n"),
+    issues: [
+      makeIssue({
+        ruleId: "no-placeholder-comments",
+        line: 2,
+        file: "src.ts",
+        severity: "error",
+        category: "Spec",
+      }),
+    ],
+    filePath: "src.ts",
+    fixCount: 1,
+  });
 });
 
 test("placeholderCommentsRule.applyFix leaves inline TODO comments alone (avoids breaking syntax)", () => {
-  const original = [
-    "const value = compute(); // TODO: implement caching",
-    "return value;",
-    "",
-  ].join("\n");
-
-  const issues: AgentIssue[] = [
-    {
-      file: "logic.ts",
-      line: 1,
-      message: "Found AI placeholder indicating unwritten code.",
-      ruleId: "no-placeholder-comments",
-      severity: "error",
-      category: "Spec",
-    },
-  ];
-
-  const { content } = placeholderCommentsRule.applyFix!(
-    original,
-    issues,
-    "logic.ts",
-  );
-
-  // Inline trailing TODO must not be rewritten — would corrupt the statement
-  assert.equal(content, original);
+  // Inline trailing TODO must not be rewritten — it would corrupt the
+  // statement. The rule's heuristic only rewrites standalone-line comments.
+  expectNoFix(placeholderCommentsRule, {
+    before: [
+      "const value = compute(); // TODO: implement caching",
+      "return value;",
+      "",
+    ].join("\n"),
+    issues: [
+      makeIssue({
+        ruleId: "no-placeholder-comments",
+        line: 1,
+        file: "logic.ts",
+        severity: "error",
+        category: "Spec",
+      }),
+    ],
+    filePath: "logic.ts",
+  });
 });
 
 // =================================================================
@@ -477,29 +460,28 @@ test("placeholderCommentsRule.applyFix leaves inline TODO comments alone (avoids
 // =================================================================
 
 test("codeQualityNoAnyRule.applyFix replaces any usages via line-only issues", () => {
-  const original = [
-    "let v: any = 0;",
-    "let w = x as any;",
-    "let r = <any>y;",
-    "",
-  ].join("\n");
-
-  const issues: AgentIssue[] = [1, 2, 3].map((line) => ({
-    file: "lines.ts",
-    line,
-    message: "any",
-    ruleId: "code-quality-no-any",
-    severity: "error",
-    category: "Code Quality",
-  }));
-
-  const { content, fixes } = codeQualityNoAnyRule.applyFix!(
-    original,
-    issues,
-    "lines.ts",
-  );
-  assert.equal(fixes.length, 3);
-  assert.doesNotMatch(content, /\bany\b/);
+  expectFix(codeQualityNoAnyRule, {
+    before: ["let v: any = 0;", "let w = x as any;", "let r = <any>y;", ""].join(
+      "\n",
+    ),
+    after: [
+      "let v: unknown = 0;",
+      "let w = x as unknown;",
+      "let r = <unknown>y;",
+      "",
+    ].join("\n"),
+    issues: [1, 2, 3].map((line) =>
+      makeIssue({
+        ruleId: "code-quality-no-any",
+        line,
+        file: "lines.ts",
+        severity: "error",
+        category: "Code Quality",
+      }),
+    ),
+    filePath: "lines.ts",
+    fixCount: 3,
+  });
 });
 
 // =================================================================
@@ -536,29 +518,26 @@ test("verificationMissingTestsRule accepts test in parallel tests/ directory", (
   const testsDir = path.join(tempDir, "tests", "lib");
   fs.mkdirSync(srcDir, { recursive: true });
   fs.mkdirSync(testsDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(srcDir, "foo.ts"),
-    "export const x = 1;\n",
-    "utf8",
-  );
+  fs.writeFileSync(path.join(srcDir, "foo.ts"), "export const x = 1;\n", "utf8");
   fs.writeFileSync(
     path.join(testsDir, "foo.test.ts"),
     "import test from 'node:test';\n",
     "utf8",
   );
 
-  const issues = verificationMissingTestsRule.check(
-    buildCtx("src/lib/foo.ts", "", false, tempDir),
-  );
-
-  assert.equal(issues.length, 0);
+  expectNoIssues(verificationMissingTestsRule, {
+    content: "",
+    filePath: "src/lib/foo.ts",
+    targetDir: tempDir,
+  });
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
 test("verificationMissingTestsRule still considers vendored src/lib paths (analyzer's glob filters them upstream)", () => {
-  // node_modules/some-pkg/src/lib/foo.ts — the rule's regex anchors on
-  // path-separator boundaries, so vendored packages still match. Real
-  // false-positive exclusion lives in the analyzer's glob ignore.
+  // The rule's regex anchors on path-separator boundaries, so vendored
+  // packages still match. Real false-positive exclusion lives in the
+  // analyzer's glob ignore — here we just confirm the rule returns an
+  // array shape without crashing.
   const issues = verificationMissingTestsRule.check(
     buildCtx("node_modules/some-pkg/src/lib/foo.ts", "", false, "/tmp/none"),
   );
@@ -570,21 +549,18 @@ test("verificationMissingTestsRule accepts colocated __tests__ directory", () =>
   const srcDir = path.join(tempDir, "src", "services");
   const subTestsDir = path.join(srcDir, "__tests__");
   fs.mkdirSync(subTestsDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(srcDir, "bar.ts"),
-    "export const y = 2;\n",
-    "utf8",
-  );
+  fs.writeFileSync(path.join(srcDir, "bar.ts"), "export const y = 2;\n", "utf8");
   fs.writeFileSync(
     path.join(subTestsDir, "bar.test.ts"),
     "import test from 'node:test';\n",
     "utf8",
   );
 
-  const issues = verificationMissingTestsRule.check(
-    buildCtx("src/services/bar.ts", "", false, tempDir),
-  );
-  assert.equal(issues.length, 0);
+  expectNoIssues(verificationMissingTestsRule, {
+    content: "",
+    filePath: "src/services/bar.ts",
+    targetDir: tempDir,
+  });
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
@@ -593,11 +569,13 @@ test("verificationMissingTestsRule accepts colocated __tests__ directory", () =>
 // =================================================================
 
 test("observabilityMissingTraceIdRule does not flag domain Agent class without LLM-shape props", () => {
-  const content = "const salesAgent = new Agent({ region: 'NA', quota: 100 });\n";
-  const issues = observabilityMissingTraceIdRule.check(
-    buildCtx("sales.ts", content, true),
-  );
-  assert.equal(issues.length, 0);
+  // The rule checks for LLM-shape properties (tools, model, instructions,
+  // etc.) so a domain class named `Agent` with custom props isn't flagged.
+  expectNoIssues(observabilityMissingTraceIdRule, {
+    content: "const salesAgent = new Agent({ region: 'NA', quota: 100 });\n",
+    filePath: "sales.ts",
+    withAst: true,
+  });
 });
 
 // =================================================================
@@ -605,23 +583,23 @@ test("observabilityMissingTraceIdRule does not flag domain Agent class without L
 // =================================================================
 
 test("executionMissingMaxStepsRule does not silence while(true) when maxSteps appears in unrelated function", () => {
-  const content = [
-    "function configure() {",
-    "  return { maxSteps: 100 };",
-    "}",
-    "function loop() {",
-    "  while (true) {",
-    "    doWork();",
-    "  }",
-    "}",
-  ].join("\n");
-
-  const issues = executionMissingMaxStepsRule.check(
-    buildCtx("loop.ts", content, true),
-  );
   // The while(true) inside loop() must still be flagged even though
   // maxSteps appears elsewhere in the file.
-  assert.ok(issues.length > 0);
+  expectCheck(executionMissingMaxStepsRule, {
+    content: [
+      "function configure() {",
+      "  return { maxSteps: 100 };",
+      "}",
+      "function loop() {",
+      "  while (true) {",
+      "    doWork();",
+      "  }",
+      "}",
+    ].join("\n"),
+    filePath: "loop.ts",
+    withAst: true,
+    expectIssues: [{ ruleId: "execution-missing-max-steps" }],
+  });
 });
 
 // =================================================================
@@ -629,37 +607,40 @@ test("executionMissingMaxStepsRule does not silence while(true) when maxSteps ap
 // =================================================================
 
 test("securityPromptInjectionRule detects multi-line template literal with toolOutput", () => {
-  const content = [
-    "const prompt = `",
-    "  Use this tool output:",
-    "  ${toolOutput}",
-    "`;",
-  ].join("\n");
-  const issues = securityPromptInjectionRule.check(
-    buildCtx("agent.ts", content, true),
-  );
-  assert.ok(issues.length > 0);
+  expectCheck(securityPromptInjectionRule, {
+    content: [
+      "const prompt = `",
+      "  Use this tool output:",
+      "  ${toolOutput}",
+      "`;",
+    ].join("\n"),
+    filePath: "agent.ts",
+    withAst: true,
+    expectIssues: [{ ruleId: "security-prompt-injection" }],
+  });
 });
 
 test("securityPromptInjectionRule detects toolResult variant", () => {
-  const issues = securityPromptInjectionRule.check(
-    buildCtx("p.ts", "const p = `Result: ${toolResult}`;"),
-  );
-  assert.ok(issues.length > 0);
+  expectCheck(securityPromptInjectionRule, {
+    content: "const p = `Result: ${toolResult}`;",
+    filePath: "p.ts",
+    expectIssues: [{ ruleId: "security-prompt-injection" }],
+  });
 });
 
 test("securityPromptInjectionRule detects lastToolMessage variant", () => {
-  const issues = securityPromptInjectionRule.check(
-    buildCtx("p.ts", "const p = `Last: ${lastToolMessage.text}`;"),
-  );
-  assert.ok(issues.length > 0);
+  expectCheck(securityPromptInjectionRule, {
+    content: "const p = `Last: ${lastToolMessage.text}`;",
+    filePath: "p.ts",
+    expectIssues: [{ ruleId: "security-prompt-injection" }],
+  });
 });
 
 test("securityPromptInjectionRule does not flag toolName template", () => {
-  const issues = securityPromptInjectionRule.check(
-    buildCtx("p.ts", "const p = `Calling ${toolName}`;"),
-  );
-  assert.equal(issues.length, 0);
+  expectNoIssues(securityPromptInjectionRule, {
+    content: "const p = `Calling ${toolName}`;",
+    filePath: "p.ts",
+  });
 });
 
 // =================================================================
@@ -667,33 +648,37 @@ test("securityPromptInjectionRule does not flag toolName template", () => {
 // =================================================================
 
 test("contextUnredactedPiiRule detects userInfo PII variant", () => {
-  const issues = contextUnredactedPiiRule.check(
-    buildCtx("svc.ts", "const userInfo = await db.users.find();"),
-  );
-  assert.ok(issues.length > 0);
+  expectCheck(contextUnredactedPiiRule, {
+    content: "const userInfo = await db.users.find();",
+    filePath: "svc.ts",
+    expectIssues: [{ ruleId: "context-unredacted-pii" }],
+  });
 });
 
 test("contextUnredactedPiiRule detects accountDetails PII variant", () => {
-  const issues = contextUnredactedPiiRule.check(
-    buildCtx("svc.ts", "const accountDetails = fetchAccount(id);"),
-  );
-  assert.ok(issues.length > 0);
+  expectCheck(contextUnredactedPiiRule, {
+    content: "const accountDetails = fetchAccount(id);",
+    filePath: "svc.ts",
+    expectIssues: [{ ruleId: "context-unredacted-pii" }],
+  });
 });
 
 test("contextUnredactedPiiRule detects plural users assignment", () => {
-  const issues = contextUnredactedPiiRule.check(
-    buildCtx("svc.ts", "const users = await db.findUsers();"),
-  );
-  assert.ok(issues.length > 0);
+  expectCheck(contextUnredactedPiiRule, {
+    content: "const users = await db.findUsers();",
+    filePath: "svc.ts",
+    expectIssues: [{ ruleId: "context-unredacted-pii" }],
+  });
 });
 
 test("contextUnredactedPiiRule accepts redacted PII via mask helper", () => {
-  const content = [
-    "const userInfo = await db.users.find();",
-    "const masked = mask(userInfo);",
-  ].join("\n");
-  const issues = contextUnredactedPiiRule.check(buildCtx("svc.ts", content));
-  assert.equal(issues.length, 0);
+  expectNoIssues(contextUnredactedPiiRule, {
+    content: [
+      "const userInfo = await db.users.find();",
+      "const masked = mask(userInfo);",
+    ].join("\n"),
+    filePath: "svc.ts",
+  });
 });
 
 // =================================================================

@@ -9,27 +9,31 @@ import { securitySecretLeakageRule } from "../src/rules/security-secret-leakage.
 import { securityDestructiveActionRule } from "../src/rules/security-destructive-action.js";
 import { runASTAnalyzer } from "../src/scanners/ast-analyzer.js";
 import { loadConfig } from "../src/config.js";
-import { buildCtx } from "./_helpers.js";
+import { expectCheck, expectNoIssues } from "./_helpers.js";
 
 test("codeQualityNoAnyRule detects any type annotations", () => {
-  const issues = codeQualityNoAnyRule.check(
-    buildCtx("test.ts", "const x: any = {};", true),
-  );
-
-  assert.ok(issues.length > 0);
-  assert.strictEqual(issues[0].ruleId, "code-quality-no-any");
+  expectCheck(codeQualityNoAnyRule, {
+    content: "const x: any = {};",
+    filePath: "test.ts",
+    withAst: true,
+    expectIssues: [{ ruleId: "code-quality-no-any" }],
+  });
 });
 
 test("codeQualityNoAnyRule skips non-TS files", () => {
   // .js files use the AST path (the rule looks for `any` keyword tokens),
   // and `any` isn't a JS keyword — so no issues.
-  const issues = codeQualityNoAnyRule.check(
-    buildCtx("test.js", "const x = any;", true),
-  );
-  assert.strictEqual(issues.length, 0);
+  expectNoIssues(codeQualityNoAnyRule, {
+    content: "const x = any;",
+    filePath: "test.js",
+    withAst: true,
+  });
 });
 
 test("orchestrator respects off config for code-quality-no-any", async () => {
+  // Orchestrator-level test (config-driven filtering happens in
+  // runASTAnalyzer, not the per-rule check). The harness only covers
+  // rule.check / rule.applyFix, so this stays at the runASTAnalyzer level.
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "agentlint-cq-off-"));
   fs.writeFileSync(path.join(tempDir, "test.ts"), "const x: any = {};", "utf8");
 
@@ -46,23 +50,19 @@ test("orchestrator respects off config for code-quality-no-any", async () => {
 });
 
 test("securitySecretLeakageRule detects OpenAI key", () => {
-  const issues = securitySecretLeakageRule.check(
-    buildCtx(
-      "config.ts",
-      "const apiKey = 'sk-abc123def456ghi789jkl012mnopqrst';",
-    ),
-  );
-  assert.ok(issues.length > 0);
+  expectCheck(securitySecretLeakageRule, {
+    content: "const apiKey = 'sk-abc123def456ghi789jkl012mnopqrst';",
+    filePath: "config.ts",
+    expectIssues: [{ ruleId: "security-secret-leakage" }],
+  });
 });
 
 test("securitySecretLeakageRule detects Slack token", () => {
-  const issues = securitySecretLeakageRule.check(
-    buildCtx(
-      "config.ts",
-      "const token = 'xoxb-1234567890-1234567890-abc123';",
-    ),
-  );
-  assert.ok(issues.length > 0);
+  expectCheck(securitySecretLeakageRule, {
+    content: "const token = 'xoxb-1234567890-1234567890-abc123';",
+    filePath: "config.ts",
+    expectIssues: [{ ruleId: "security-secret-leakage" }],
+  });
 });
 
 test("orchestrator respects security-secret-leakage off config", async () => {
@@ -88,22 +88,22 @@ test("orchestrator respects security-secret-leakage off config", async () => {
 });
 
 test("securityDestructiveActionRule detects destructive action without confirmation", () => {
-  const issues = securityDestructiveActionRule.check(
-    buildCtx("agent.ts", "fs.writeFileSync('/tmp/file.txt', data);"),
-  );
-  assert.ok(issues.length > 0);
+  expectCheck(securityDestructiveActionRule, {
+    content: "fs.writeFileSync('/tmp/file.txt', data);",
+    filePath: "agent.ts",
+    expectIssues: [{ ruleId: "security-destructive-action" }],
+  });
 });
 
 test("securityDestructiveActionRule allows destructive action with confirmation", () => {
-  const content = [
-    "// First confirm with user",
-    "const confirmed = userConfirmed;",
-    "if (confirmed) {",
-    "  fs.writeFileSync('/tmp/file.txt', data);",
-    "}",
-  ].join("\n");
-  const issues = securityDestructiveActionRule.check(
-    buildCtx("agent.ts", content),
-  );
-  assert.strictEqual(issues.length, 0);
+  expectNoIssues(securityDestructiveActionRule, {
+    content: [
+      "// First confirm with user",
+      "const confirmed = userConfirmed;",
+      "if (confirmed) {",
+      "  fs.writeFileSync('/tmp/file.txt', data);",
+      "}",
+    ].join("\n"),
+    filePath: "agent.ts",
+  });
 });
